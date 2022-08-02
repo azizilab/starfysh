@@ -3,6 +3,13 @@
 
 ## Spatial Transcriptomic Analysis using Reference-Free auxiliarY deep generative modeling and Shared Histology
 
+V0.1 (on Zenodo):  Cite as
+
+He, Siyu, Jin, Yinuo, Nazaret, Achille, Shi, Lingting, Chen, Xueer, & Azizi, Elham. (2022). STARFYSH. Zenodo. https://doi.org/10.5281/zenodo.6950761
+
+V0.2 (documents coming soon...)
+
+
 ## Problem setting: 
 
 Spatial Transcriptomics (ST / Visium) data captures gene expressions as well as their locations. However, with limited spatial resolution, each spot usually covers more than 1 cells. To infer potential cellular interactions, we need to infer deconvoluted components specific to each cell-type from the spots to infer functional modules describing cellular states. 

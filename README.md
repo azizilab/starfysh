@@ -6,6 +6,8 @@
 <img src=https://github.com/azizilab/starfysh/blob/main/_figure/github_figure_1.png width="1000" />
 
 
+<img src=https://github.com/azizilab/starfysh/blob/main/_figure/github_figure_2.png width="1000" />
+
 V0.1 (on Zenodo):  Cite as
 
 He, Siyu, Jin, Yinuo, Nazaret, Achille, Shi, Lingting, Chen, Xueer, & Azizi, Elham. (2022). STARFYSH. Zenodo. https://doi.org/10.5281/zenodo.6950761

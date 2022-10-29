@@ -17,11 +17,14 @@ To circumvent the need for a single-cell reference in deconvolving cell types, S
 
 ## Updata
 
-V 0.0.0 (on Zenodo):  Cite as
+- V 1.0.0 (Tutorial coming soon...)
+  Check our preprint
+  
+- V 0.0.0 (on Zenodo):  Cite as
 
 He, Siyu, Jin, Yinuo, Nazaret, Achille, Shi, Lingting, Chen, Xueer, & Azizi, Elham. (2022). STARFYSH. Zenodo. https://doi.org/10.5281/zenodo.6950761
 
-V 1.0.0 (Tutorial coming soon...)
+
 
 
 ## Installation:

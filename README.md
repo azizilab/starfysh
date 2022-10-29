@@ -1,7 +1,7 @@
 <img src=https://github.com/azizilab/starfysh/blob/main/_figure/logo.png width="800" />
 
 
-## Spatial Transcriptomic Analysis using Reference-Free auxiliarY deep generative modeling and Shared Histology
+## Starfysh: Spatial Transcriptomic Analysis using Reference-Free auxiliarY deep generative modeling and Shared Histology
 
 <img src=https://github.com/azizilab/starfysh/blob/main/_figure/github_figure_1.png width="1000" />
 

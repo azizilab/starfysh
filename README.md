@@ -26,6 +26,22 @@ He, Siyu, Jin, Yinuo, Nazaret, Achille, Shi, Lingting, Chen, Xueer, & Azizi, Elh
 
 
 
+## Models:
+- Semi-supervised learning with Auxiliary Variational Autoencoder (AVAE) for cell-type deconvolution
+- Archetypal analysis for unsupervised cell-type discovery (novel cell types) & marker gene refinement (existing annotated cell types)
+- Product-of-Experts (PoE) for H&E image integration
+
+- Input:
+  - Spatial Transcriptomics count matrix
+  - Annotated signature gene sets
+  - (Optional): paired H&E image
+  
+- Output:
+  - Spot-wise deconvolution matrix (`q(c)`)
+  - Low-dimensional manifold representation (`q(z)`)
+  - Clusterings (single-sample) / Hubs (multiple-sample integration) given the deconvolution results
+  - Co-localization networks across cell types and Spatial R-L interactions
+  - Imputated count matrix (`p(x)`)
 
 ## Installation:
 Starfysh can be easily installed from pip:
@@ -44,6 +60,20 @@ Use spatial transcriptomics expression data & annotated signature gene sets as i
 ```
 .
 ├── data:           Spatial Transcritomics & synthetic simulation datasets
-├── notebooks:      Sample notebook & tutorial (to be updated)
-├── starfysh:       model
+├── notebooks:      Sample notebook & tutorial
+├── simulation:     Synthetic simulation from scRNA-seq for benchmark
+├── starfysh:       Starfysh core model
+```
+
+## Installation
+(To be updated: currently only contain expression-based deconvolution model)
+```bash
+# install
+python setup.py install --user
+
+# uninstall
+pip uninstall bcvae
+
+# re-install
+./reinstall.sh
 ```

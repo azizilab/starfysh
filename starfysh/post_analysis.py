@@ -6,7 +6,7 @@ import pandas as pd
 import os
 import networkx as nx
 import seaborn as sns
-from .starfysh import utils
+from starfysh import utils
 import umap
 from scipy.stats import pearsonr, gaussian_kde
 

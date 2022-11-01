@@ -26,10 +26,11 @@ np.random.seed(0)
 
 
 class AVAE(nn.Module):
-    """ model design ***
-    p(x|z)=f(z)
-    p(z|x)~N(0,1)
-    q(z|x)~g(x)
+    """ 
+    Model design
+        p(x|z)=f(z)
+        p(z|x)~N(0,1)
+        q(z|x)~g(x)
     """
     
     def __init__(
@@ -254,10 +255,11 @@ class AVAE(nn.Module):
 
 
 class AVAE_poe(nn.Module):
-    """ simple model design ***
-    p(x|z)=f(z)
-    p(z|x)~N(0,1)
-    q(z|x)~g(x)
+    """ 
+    Model design:
+        p(x|z)=f(z)
+        p(z|x)~N(0,1)
+        q(z|x)~g(x)
     """
 
     def __init__(

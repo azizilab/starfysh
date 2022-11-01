@@ -3,3 +3,6 @@ numpy
 pandas
 scanpy
 torch
+sphinx
+ipykernel
+nbsphinx

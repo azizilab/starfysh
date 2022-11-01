@@ -3,8 +3,10 @@ import pandas as pd
 import logging
 import torch
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
+from torch.utils.data import Dataset
+
+# from torchvision import transforms
+
 
 class VisiumDataset(Dataset):
     """

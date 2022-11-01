@@ -2,6 +2,7 @@ ipykernel
 matplotlib
 nbsphinx
 numpy
+opencv-python
 pandas
 py_pcha
 scanpy

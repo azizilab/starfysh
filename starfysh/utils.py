@@ -504,8 +504,6 @@ def preprocess_img(
         adata_image_h = ((adata_image_h - adata_image_h.min()) / (adata_image_h.max()-adata_image_h.min()) *255).astype(np.uint8)
         adata_image_e = ((adata_image_e - adata_image_e.min()) / (adata_image_e.max()-adata_image_e.min()) *255).astype(np.uint8)
 
-        # clahe = cv2.createCLAHE(clipLimit=20.0, tileGridSize=(20,20))
-        # clahe = cv2.createCLAHE(clipLimit=10.0, tileGridSize=(10,10)) 2021-01-05
         clahe = cv2.createCLAHE(clipLimit=10.0, tileGridSize=(8, 8))
 
         adata_image_h = clahe.apply(adata_image_h)

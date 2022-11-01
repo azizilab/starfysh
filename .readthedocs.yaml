@@ -9,7 +9,7 @@ build:
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
-   configuration: docs/source/conf.pY
+   configuration: docs/source/conf.py
    builder: html
 
 # If using Sphinx, optionally build your docs in additional formats such as PDF

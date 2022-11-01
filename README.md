@@ -1,4 +1,4 @@
-<img src=https://github.com/azizilab/starfysh/blob/main/_figure/logo.png width="800" />
+<img src=https://github.com/azizilab/starfysh/blob/main/_figure/logo.png width="700" />
 
 
 ## Starfysh: Spatial Transcriptomic Analysis using Reference-Free auxiliarY deep generative modeling and Shared Histology
@@ -7,7 +7,7 @@ Starfysh is an end-to-end toolbox for analysis and integration of ST datasets. I
 
 To circumvent the need for a single-cell reference in deconvolving cell types, Starfysh leverages two key concepts to determine spots with the most distinct expression profiles as “anchors” that in turn pull apart the remainder of spots: First, Starfysh incorporates a compendium of known cell type marker genesets as well as any additional markers provided by the user. Assuming that the spots with the highest overall expression of a cell type geneset are likely to have the highest proportion of that cell type, these spots form an initial set of anchors. Second, since cell state markers can be context-dependent or not well-characterized, Starfysh utilizes archetypal analysis to refine the initial anchor set and further adds non-overlapping archetypes as additional anchors to enable discovery of novel cell states or a hierarchy of cell states. This feature is particularly useful in characterizing tissue-specific cell states (e.g. patient-specific tumor cell states), their phenotypic transformation in space and associated crosstalk with the microenvironment.
 
-<img src=https://github.com/azizilab/starfysh/blob/main/_figure/github_figure_1.png width="800" />
+<img src=https://github.com/azizilab/starfysh/blob/main/_figure/github_figure_1.png width="1000" />
 
 
 <img src=https://github.com/azizilab/starfysh/blob/main/_figure/github_figure_2.png width="1000" />

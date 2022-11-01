@@ -24,9 +24,8 @@ To circumvent the need for a single-cell reference in deconvolving cell types, S
   
 
   
-- V 0.0.0 (on Zenodo):  Cite as
-
-He, Siyu, Jin, Yinuo, Nazaret, Achille, Shi, Lingting, Chen, Xueer, & Azizi, Elham. (2022). STARFYSH. Zenodo. [link here](https://doi.org/10.5281/zenodo.6950761)
+- V 0.0.0 (on Zenodo):  
+  - Cite as: He, Siyu, Jin, Yinuo, Nazaret, Achille, Shi, Lingting, Chen, Xueer, & Azizi, Elham. (2022). STARFYSH. Zenodo. [link here](https://doi.org/10.5281/zenodo.6950761)
 
 
 

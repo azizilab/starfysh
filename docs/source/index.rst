@@ -23,6 +23,7 @@ Welcome to Starfysh's documentation!
    :maxdepth: 3
    :caption: API Reference:
 
+   modules
    starfysh
 
 Indices and tables

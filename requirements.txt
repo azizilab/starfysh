@@ -1,8 +1,13 @@
+ipykernel
 matplotlib
+nbsphinx
 numpy
 pandas
+py_pcha
 scanpy
-torch
+scikit-dimension
+sklearn
 sphinx
-ipykernel
-nbsphinx
+sphinxcontrib-apidoc
+torch
+

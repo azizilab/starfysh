@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath('../..'))
 # -- Project information -----------------------------------------------------
 
 project = 'Starfysh'
-copyright = '2022, AziziLab'
+copyright = '2022, Azizi Lab'
 author = 'Siyu He, Yinuo Jin'
 
 # The full version, including alpha/beta/rc tags

@@ -1,10 +1,5 @@
-histomicstk
 matplotlib
 numpy
 pandas
-py_pcha
 scanpy
-scipy
-scikit-dimension
-sklearn
 torch

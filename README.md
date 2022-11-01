@@ -15,6 +15,7 @@ To circumvent the need for a single-cell reference in deconvolving cell types, S
 
 ## Update
 - V 1.0.0 
+  - [Stafysh Documents here](http://starfysh.readthedocs.io)
   - Check the [tutorial on a simple simulated data](https://github.com/azizilab/starfysh/blob/main/notebooks/Starfysh%20tutorial%20on%20a%20toy%20dataset.ipynb)
   
   - Incoming tutorial: 

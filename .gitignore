@@ -1,0 +1,32 @@
+# OS generated files
+.DS_Store
+
+# Compiled
+__pycache__/
+*.py[cod]
+
+# R code
+.Rdata
+.Rhistory
+
+# Packaging
+build/
+dist/
+*.egg
+*.egg-info/
+lib/
+lib64/
+bdist.linux-x86_64/
+MANIFEST
+
+# Environments
+.env
+env/
+.venv
+/venv/
+
+# Others
+.csv
+.idea
+.ipynb_checkpoints
+data*/

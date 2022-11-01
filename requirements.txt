@@ -1,14 +1,10 @@
-gdal==3.0.2
 histomicstk
 matplotlib
 numpy
-networkx
-opencv-python
 pandas
 py_pcha
 scanpy
 scipy
 scikit-dimension
-seaborn
 sklearn
 torch

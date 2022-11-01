@@ -20,7 +20,7 @@ import sys
 from skimage import io
 
 # Module import
-from _starfysh import LOGGER
+from starfysh import LOGGER
 from .starfysh import AVAE, train
 from .dataloader import VisiumDataset 
 
@@ -348,8 +348,7 @@ def preprocess(adata_raw,
         assert 0 < min_perc < max_perc < 100, \
             "Invalid thresholds for cells: {0}, {1}".format(min_perc, max_perc)
         min_counts = np.percentile(adata.obs['total_counts'], min_perc)
-        max_counts = np.percentile(adata.obs['total_counts'], min_perc)
-        sc.pp.filter_cells(adata, min_counts=min_counts, max_counts=max_counts)
+        sc.pp.filter_cells(adata, min_counts=min_counts)
         
     # Remove cells with excessive MT expressions
     # Remove MT & RB genes
@@ -363,12 +362,10 @@ def preprocess(adata_raw,
     )
 
     sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], inplace=True)
-    
     mask_cell = adata.obs['pct_counts_mt'] < mt_thld
     mask_gene = np.logical_and(~adata.var['mt'], ~adata.var['rb'])
 
     adata = adata[mask_cell, mask_gene]
-    
     sc.pp.filter_genes(adata, min_cells=1)
 
     if lognorm:
@@ -392,7 +389,7 @@ def preprocess(adata_raw,
         LOGGER.info('Preprocessing4: Find the variable genes')
     sc.pp.highly_variable_genes(adata, flavor='seurat', n_top_genes=n_top_genes, inplace=True)
     
-    return adata
+    return adata[:, adata.var.highly_variable]
 
 def load_adata(data_folder, sample_id, n_genes, multiple_data=False):
     """
@@ -416,6 +413,7 @@ def load_adata(data_folder, sample_id, n_genes, multiple_data=False):
     -------
         adata : sc.AnnData
             Processed ST raw counts
+
         adata_norm : sc.AnnData
             Processed ST normalized & log-transformed data
     """
@@ -745,7 +743,7 @@ def refine_anchors(
     aa_model : ArchetypalAnalysis
         Pre-computed archetype object
         
-    map_info : np.ndarray
+    map_info : pd.DataFrame
         Spatial coords of spots (dim: [S, 2])
     
     thld : float
@@ -775,7 +773,6 @@ def refine_anchors(
         # (1). Update signatures
         for i in range(gene_sig.shape[1]):
             selected_arch = map_used.columns[map_used.loc[map_used.index[i],:]>=thld]
-            n_genes = 5
             for j in selected_arch:
                 print('appending {0} genes in {1} to {2}...'.format(
                     str(n_genes), j, map_used.index[i]
@@ -802,5 +799,3 @@ def refine_anchors(
         map_df, _ = aa_model.assign_archetypes(anchors)
         
     return visium_args
-
-

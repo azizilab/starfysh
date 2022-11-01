@@ -4,13 +4,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import os
-import anndata
 import networkx as nx
-import sys
 import seaborn as sns
-from _starfysh import utils
+from .starfysh import utils
 import umap
-from scipy.stats import pearsonr,gaussian_kde
+from scipy.stats import pearsonr, gaussian_kde
 
 
 
@@ -36,8 +34,6 @@ def plot_type_all(inference_outputs,u, proportions):
     for i in range(proportions.shape[1]):
         plt.scatter(u[group_c==i,0],u[group_c==i,1],s=1,c = qc_m[group_c==i,i], cmap=cmaps[i])
     plt.legend(proportions.columns,loc='right', bbox_to_anchor=(2.2,0.5),)
-    #plt.colorbar(label='cell number')
-    #plt.title('UMAP of z')
     plt.axis('off')
     
     
@@ -62,17 +58,18 @@ def get_corr_map(inference_outputs,proportions):
     plt.ylabel('Ground truth proportion')
 
     
-def pl_spatial_inf_feature(adata_sample,
-               map_info,
-               inference_outputs,
-               feature, 
-               idx,
-               plt_title,
-               label,
-               vmin=None,
-               vmax=None,
-               s=3,      
-              ):
+def pl_spatial_inf_feature(
+    adata_sample,
+    map_info,
+    inference_outputs,
+    feature,
+    idx,
+    plt_title,
+    label,
+    vmin=None,
+    vmax=None,
+    s=3,
+):
     qvar = inference_outputs[feature].detach().cpu().numpy()
     color_idx_list = (qvar[:,idx].astype(float))
     all_loc = np.array(map_info.loc[:,['array_col','array_row']])
@@ -88,24 +85,22 @@ def pl_spatial_inf_feature(adata_sample,
     
     pass
 
-
-
-from scipy.stats import gaussian_kde
-def display_reconst(df_true,
-                    df_pred,
-                    density=False,
-                    marker_genes=None,
-                    sample_rate=0.1,
-                    size=(3, 3),
-                    spot_size=1,
-                    title=None,
-                    x_label='',
-                    y_label='',
-                    x_min=0,
-                    x_max=10,
-                    y_min=0,
-                    y_max=10,
-                    ):
+def display_reconst(
+    df_true,
+    df_pred,
+    density=False,
+    marker_genes=None,
+    sample_rate=0.1,
+    size=(3, 3),
+    spot_size=1,
+    title=None,
+    x_label='',
+    y_label='',
+    x_min=0,
+    x_max=10,
+    y_min=0,
+    y_max=10,
+):
     """
     Scatter plot - raw gexp vs. reconstructed gexp
     """
@@ -214,6 +209,7 @@ def plot_stacked_prop(results, category_names):
         A mapping from question labels to a list of answers per category.
         It is assumed all lists contain the same number of entries and that
         it matches the length of *category_names*.
+
     category_names : list of str
         The category labels.
     """
@@ -253,6 +249,7 @@ def plot_density(results, category_names):
         A mapping from question labels to a list of answers per category.
         It is assumed all lists contain the same number of entries and that
         it matches the length of *category_names*.
+
     category_names : list of str
         The category labels.
     """
@@ -269,17 +266,8 @@ def plot_density(results, category_names):
         widths = data[:, i]
         starts = 0
         ax.barh(labels, widths, left=starts, height=0.6,label=colname, color=color)
-        #xcenters = starts + widths / 2
 
         r, g, b, _ = color
-        text_color = 'black' #if r * g * b < 0.5 else 'darkgrey'
-        #for y, (x, c) in enumerate(zip(xcenters, widths)):
-        #    ax.text(x, y, str(round(c,2)), ha='center', va='center',
-        #            color=text_color)
-    #ax.legend(ncol=len(category_names), bbox_to_anchor=(0, 1),
-    #          loc='right', fontsize='small')
-    #ax.legend(category_names,loc='right',bbox_to_anchor=(2, 0.5))
-    #ax.set_title('Inferred density')
     return fig, ax
 
 
@@ -378,7 +366,7 @@ def get_SCI(W, X, Y):
     return term5
 
 def get_cormtx(sample_id, hub_num ):
-
+    # TODO: get_cormtx
     prop_i = proportions_df[ids_df['source']==sample_id][cluster_df['cluster']==hub_num]
     loc_i = np.array(map_info_all.loc[prop_i.index].loc[:,['array_col','array_row',]])
     W = np.zeros([loc_i.shape[0],loc_i.shape[0]])
@@ -410,8 +398,6 @@ def get_hub_cormtx(sample_ids, hub_num):
     cor_matrix = cor_matrix/len(sample_ids)
     #cor_matrix = pd.DataFrame(cor_matrix)
     return cor_matrix
-
-
 
 def create_corr_network_5(G, node_size_list,corr_direction, min_correlation):
     ##Creates a copy of the graph

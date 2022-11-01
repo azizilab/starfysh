@@ -1,3 +1,4 @@
+gdal==3.0.2
 histomicstk
 matplotlib
 numpy

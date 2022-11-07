@@ -22,7 +22,8 @@ def plot_spatial_feature(adata_sample,
                  )
     fig.colorbar(g,label=label)
     plt.axis('off')
-    
+
+
 def plot_spatial_gene(adata_sample,
                          map_info,
                          gene_name,
@@ -38,6 +39,7 @@ def plot_spatial_gene(adata_sample,
                  )
     fig.colorbar(g,label=gene_name)
     plt.axis('off')
+
 
 def plot_anchor_spots(umap_plot,
                       pure_spots,
@@ -59,19 +61,29 @@ def plot_anchor_spots(umap_plot,
                bbox_to_anchor=(bbox_x,0.5),)
     ax.grid(False)
     ax.axis('off')
-    
-def pl_spatial_inf_feature(adata_sample,
-               map_info,
-               inference_outputs,
-               feature, 
-               idx,
-               plt_title,
-               label,
-               vmin=None,
-               vmax=None,
-               s=3,   
-              cmap='Spectral_r'
-              ):
+
+
+def plot_evs(evs):
+    fig, ax = plt.subplots(1, 1, dpi=300, figsize=(6, 3))
+    plt.plot(np.arange(len(evs)), evs, '.-')
+    plt.xlabel('ks')
+    plt.ylabel('Explained Variance')
+    plt.show()
+
+
+def pl_spatial_inf_feature(
+    adata_sample,
+    map_info,
+    inference_outputs,
+    feature,
+    idx,
+    plt_title,
+    label,
+    vmin=None,
+    vmax=None,
+    s=3,
+    cmap='Spectral_r'
+):
     qvar = inference_outputs[feature].detach().cpu().numpy()
     color_idx_list = ((qvar[:,idx].astype(float)))
     #color_idx_list = (color_idx_list-color_idx_list.min())/(color_idx_list.max()-color_idx_list.min())
@@ -87,7 +99,6 @@ def pl_spatial_inf_feature(adata_sample,
     plt.axis('off')
     
     pass
-
 
 
 def pl_umap_feature(adata_sample,
@@ -135,7 +146,6 @@ def pl_spatial_inf_gene(adata_sample,
     fig,axs= plt.subplots(1,1,figsize=(4,3),dpi=200)
     g=axs.scatter(all_loc[:,0],-all_loc[:,1],cmap='magma',c=color_idx_list,s=s,vmin=vmin,vmax=vmax)
 
-    #plt.legend(color_unique_idx,title='disc_gsva',loc='right',bbox_to_anchor=(1.3, 0.5))
     fig.colorbar(g,label=label)
     plt.title(plt_title)
     axs.set_xticks([])
@@ -143,3 +153,4 @@ def pl_spatial_inf_gene(adata_sample,
     plt.axis('off')
     
     pass
+

@@ -15,7 +15,7 @@ from starfysh import LOGGER
 
 
 class ArchetypalAnalysis:
-    # Todo: implement non-linear archetype analysis with VAE, compare explainability with linear implementation
+    # Todo: implement non-linear archetype analysis with VAE, compare explanability with linear implementation
     def __init__(
         self,
         adata_orig,

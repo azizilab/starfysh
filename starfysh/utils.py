@@ -697,8 +697,7 @@ def get_windowed_library(adata_sample, map_info, library, window_size):
     return library_n
 
 
-
-def append_sigs(gene_sig, factor, sigs, n_genes=30):
+def append_sigs(gene_sig, factor, sigs, n_genes=5):
     """
     Append list of genes to a given cell type as additional signatures or 
     add novel cell type / states & their signatures

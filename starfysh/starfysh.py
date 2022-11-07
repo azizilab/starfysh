@@ -836,12 +836,12 @@ class NegBinom(Distribution):
     
     
 def model_eval(
-        model,
-        adata_sample,
-        sig_mean,
-        device,
-        library_i,
-        lib_low=5.0
+    model,
+    adata_sample,
+    sig_mean,
+    device,
+    library_i,
+    lib_low=5.0
 ):
     lib_low = torch.exp(torch.Tensor([lib_low])).to(device)
     

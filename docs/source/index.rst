@@ -5,7 +5,6 @@
 
 Welcome to Starfysh's documentation!
 ====================================
-
 .. toctree::
    :maxdepth: 3
    :caption: Basics:
@@ -17,7 +16,8 @@ Welcome to Starfysh's documentation!
    :maxdepth: 3
    :caption: Examples:
 
-   notebooks/example_sim.ipynb
+   notebooks/Starfysh_tutorial_simulation.ipynb
+   notebooks/Starfysh_tutorial_real.ipynb
 
 .. toctree::
    :maxdepth: 3
@@ -31,3 +31,4 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+

@@ -63,9 +63,9 @@ def plot_anchor_spots(umap_plot,
     ax.axis('off')
 
 
-def plot_evs(evs):
+def plot_evs(evs, kmin):
     fig, ax = plt.subplots(1, 1, dpi=300, figsize=(6, 3))
-    plt.plot(np.arange(len(evs)), evs, '.-')
+    plt.plot(np.arange(len(evs))+kmin, evs, '.-')
     plt.xlabel('ks')
     plt.ylabel('Explained Variance')
     plt.show()
@@ -101,17 +101,18 @@ def pl_spatial_inf_feature(
     pass
 
 
-def pl_umap_feature(adata_sample,
-                   map_info,
-                   inference_outputs,
-                   feature='qc_m',
-                   idx=None,
-                   plt_title=None,
-                   label=None,
-                   s=4,
-                   vmin=None,
-                   vmax=None
-              ):
+def pl_umap_feature(
+    adata_sample,
+    map_info,
+    inference_outputs,
+    feature='qc_m',
+    idx=None,
+    plt_title=None,
+    label=None,
+    s=4,
+    vmin=None,
+    vmax=None
+):
     
     qvar = np.array(inference_outputs['qc_m'].detach().cpu().numpy())
     
@@ -120,7 +121,6 @@ def pl_umap_feature(adata_sample,
     fig,axs= plt.subplots(1,1,figsize=(4,3),dpi=200)
     g=axs.scatter(all_loc[:,0],all_loc[:,1],cmap='Spectral_r',c=color_idx_list,s=s,vmin=vmin,vmax=vmax)
 
-    #plt.legend(color_unique_idx,title='disc_gsva',loc='right',bbox_to_anchor=(1.3, 0.5))
     fig.colorbar(g,label=label)
     plt.title(plt_title)
     axs.set_xticks([])
@@ -130,16 +130,17 @@ def pl_umap_feature(adata_sample,
     pass
 
 
-def pl_spatial_inf_gene(adata_sample,
-               map_info,
-               feature, 
-               idx,
-               plt_title,
-               label,
-               vmin=None,
-               vmax=None,
-               s=3,      
-              ):
+def pl_spatial_inf_gene(
+    adata_sample,
+    map_info,
+    feature,
+    idx,
+    plt_title,
+    label,
+    vmin=None,
+    vmax=None,
+    s=3,
+):
     qvar = feature
     color_idx_list = (qvar[:,idx].astype(float))
     all_loc = np.array(map_info.loc[:,['array_col','array_row']])
@@ -153,4 +154,3 @@ def pl_spatial_inf_gene(adata_sample,
     plt.axis('off')
     
     pass
-

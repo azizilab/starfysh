@@ -21,83 +21,87 @@ from skimage import io
 
 # Module import
 from starfysh import LOGGER
-from .starfysh import AVAE, train
-from .dataloader import VisiumDataset 
+from .dataloader import VisiumDataset, VisiumPoEDataSet
+from .starfysh import AVAE, AVAE_PoE, train, train_poe
 
 
-# --------------------------------
-# Data-preprocessing arguments
-# --------------------------------
 
+# -------------------
+# Model Parameters
+# -------------------
 class VisiumArguments:
     """
     Loading Visium AnnData, perform preprocessing, library-size smoothing & Anchor spot detection
-    
+
     Parameters
     ----------
     adata : AnnData
         annotated visium count matrix
-    
+
     adata_norm : AnnData
         annotated visium count matrix after normalization & log-transform
-        
+
     gene_sig : pd.DataFrame
         list of signature genes for each cell type. (dim: [S, Cell_type])
-        
+
     map_info : pd.DataFrame
         Spatial information of histology image paired with visium
     """
-    
+
     def __init__(
-        self, 
-        adata, 
+        self,
+        adata,
         adata_norm,
-        gene_sig, 
-        map_info, 
+        gene_sig,
+        map_info,
+        img=None,
         **kwargs
     ):
-        
+
         self.adata = adata
         self.adata_norm = adata_norm
         self.gene_sig = gene_sig
-        
+        self.img = img
+        self.map_info = map_info
+
         self.params = {
-            'n_anchors': 60,            
+            'n_anchors': 60,
+            'patch_r': 13,
             'vlow': 10,
             'vhigh': 95,
-            'window_size': 30,       
+            'window_size': 30,
             'z_axis': 0
         }
-        
+
         # Update parameters for library smoothing & anchor spot identification
         for k, v in kwargs.items():
             if k in self.params.keys():
                 self.params[k] = v
-        
+
         # Filter out signature genes X listed in expression matrix
         LOGGER.info('Filtering signatures not highly variable...')
         self.adata = get_adata_wsig(adata, gene_sig)
-        self.adata_norm = get_adata_wsig(adata_norm, gene_sig)    
-        
+        self.adata_norm = get_adata_wsig(adata_norm, gene_sig)
+
         # Get smoothed library size
         LOGGER.info('Smoothing library size by taking averaging with neighbor spots...')
         log_lib = np.log1p(self.adata.X.sum(1))
         self.log_lib = np.squeeze(np.asarray(log_lib)) if log_lib.ndim > 1 else log_lib
-        self.win_loglib = get_windowed_library(self.adata, 
+        self.win_loglib = get_windowed_library(self.adata,
                                                map_info,
                                                self.log_lib,
                                                window_size=self.params['window_size']
                                               )
-        
+
         # Retrieve & Z-norm signature gexp
         LOGGER.info('Retrieving & normalizing signature gene expressions...')
         self.sig_mean = get_sig_mean(self.adata,
                                      gene_sig,
                                      self.log_lib)
         self.sig_mean_znorm = znorm_sigs(self.sig_mean, z_axis=self.params['z_axis'])
-        
+
         # Get anchor spots
-        LOGGER.info('Identifying anchor spots (highly expression of specific cell-type signatures)...') 
+        LOGGER.info('Identifying anchor spots (highly expression of specific cell-type signatures)...')
         anchor_info = get_anchor_spots(self.adata,
                                        self.sig_mean_znorm,
                                        v_low=self.params['vlow'],
@@ -105,21 +109,17 @@ class VisiumArguments:
                                        n_anchor=self.params['n_anchors']
                                       )
         self.pure_spots, self.pure_dict, self.pure_idx = anchor_info
-        # TODO: what does the following ling mean? (I assume all selected genes are HVGs)
-        #self.adata.var['highly_variable'] = True
-        
-        # Calculate alpha mean
-        self.alpha_min = get_alpha_min(self.sig_mean, self.pure_dict)
-        
+        self.alpha_min = get_alpha_min(self.sig_mean, self.pure_dict) # Calculate alpha mean
+
     def get_adata(self):
         """Return adata after preprocessing & HVG gene selection"""
         return self.adata, self.adata_norm
-    
+
     def get_anchors(self):
         """Return indices of anchor spots for each cell type"""
         anchors_df = pd.DataFrame.from_dict(self.pure_dict, orient='columns')
         return anchors_df.applymap(
-            lambda x: 
+            lambda x:
             np.where(self.adata.obs.index == x)[0][0] # TODO: make sure adata.obs index is formatted as "location_i"
         )
 
@@ -146,6 +146,7 @@ def run_starfysh(
     lr=0.001,
     epochs=50,
     patience=10,
+    poe=False,
     device=torch.device('cpu'),
     verbose=True
 ):
@@ -179,28 +180,22 @@ def run_starfysh(
     
     # Loading parameters
     adata = visium_args.adata
-    alpha_min = visium_args.alpha_min
     win_loglib = visium_args.win_loglib
     gene_sig, sig_mean_znorm = visium_args.gene_sig, visium_args.sig_mean_znorm
-    pure_dict, pure_idx = visium_args.pure_dict, visium_args.pure_idx
-    
 
     models = [None] * n_repeats
     losses = []
     loss_c_list = np.repeat(np.inf, n_repeats)
 
-    trainset = VisiumDataset(
-        adata=adata,
-        gene_sig_exp_m=sig_mean_znorm,
-        adata_pure=pure_idx,
-        library_n=win_loglib
-    )
+    if poe:
+        dl_func = VisiumPoEDataSet  # dataloader
+        train_func = train_poe  # training wrapper
+    else:
+        dl_func = VisiumDataset
+        train_func = train
 
-    trainloader = DataLoader(
-        trainset,
-        batch_size=32,
-        shuffle=True
-    )
+    trainset = dl_func(adata=adata, args=visium_args)
+    trainloader = DataLoader(trainset, batch_size=32, shuffle=True)
 
     # Running Starfysh with multiple starts
     LOGGER.info('Running Starfysh with {} restarts, choose the model with best parameters...'.format(n_repeats))
@@ -209,14 +204,21 @@ def run_starfysh(
             LOGGER.info(" ===  Restart Starfysh {0} === \n".format(i + 1))
 
         patience = max_patience
-
         best_loss_c = np.inf
-        
-        model = AVAE(
-            adata=adata,
-            gene_sig=gene_sig,
-            win_loglib=win_loglib
-        )
+
+        if poe:
+            model = AVAE_PoE(
+                adata=adata,
+                gene_sig=gene_sig,
+                patch_r=visium_args.params['patch_r'],
+                win_loglib=win_loglib
+            )
+        else:
+            model = AVAE(
+                adata=adata,
+                gene_sig=gene_sig,
+                win_loglib=win_loglib
+            )
         model = model.to(device)
 
         loss_dict = {
@@ -240,15 +242,8 @@ def run_starfysh(
                     LOGGER.info('Saving best-performing model; Early stopping...')
                 break
 
-            result = train(
-                model,
-                trainloader,
-                trainset,
-                device,
-                optimizer
-            )
+            result = train_func(model, trainloader, device, optimizer)
             torch.cuda.empty_cache()
-
             loss_tot, loss_reconst, loss_z, loss_c, loss_n, corr_list = result
 
             if loss_c < best_loss_c:
@@ -284,11 +279,9 @@ def run_starfysh(
     return best_model, loss
 
 
-
 # -------------------
 # Preprocessing & IO
 # -------------------
-
 
 def get_alpha_min(sig_mean, pure_dict):
     """Calculate alpha_min for Dirichlet dist. for each factor"""

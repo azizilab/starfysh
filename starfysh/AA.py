@@ -45,6 +45,7 @@ class ArchetypalAnalysis:
         self.major_idx = None
         self.arche_dict = None
         self.arche_df = None
+        self.kmin = 0
 
         self.U = u
         self.U_3d = u_3d
@@ -94,7 +95,7 @@ class ArchetypalAnalysis:
             Index of major archetypes among `k` raw candidates after merging\
 
         evs : list
-            LIst of explained variance with different Ks
+            Explained variance with different Ks
         """
         
         # TMP: across-sample comparison: fix # principle components for all samples
@@ -108,15 +109,15 @@ class ArchetypalAnalysis:
                                     produce_plots=display,
                                     verbose=self.verbose)
 
-        kmin = max(1, int(id_model.fit(self.count).dimension_))
+        self.kmin = max(1, int(id_model.fit(self.count).dimension_))
 
         # Compute raw archetypes
         if self.verbose:
-            LOGGER.info('Estimating lower bound of # archetype as {0}...'.format(kmin))
+            LOGGER.info('Estimating lower bound of # archetype as {0}...'.format(self.kmin))
         X = self.count.T
         archetypes = []
         evs = []
-        for i, k in enumerate(range(kmin, kmin+n_iters)):
+        for i, k in enumerate(range(self.kmin, self.kmin+n_iters)):
             archetype, _, _, _, ev = PCHA(X, noc=k, delta=0.1)
             evs.append(ev)
             archetypes.append(np.array(archetype).T)

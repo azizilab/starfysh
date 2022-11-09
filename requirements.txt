@@ -12,4 +12,5 @@ sklearn
 sphinx
 sphinxcontrib-apidoc
 torch
+torchvision
 

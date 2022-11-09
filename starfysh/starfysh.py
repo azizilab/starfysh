@@ -17,7 +17,9 @@ from skimage import io
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
-from torch.distributions import Normal, LogNormal,Dirichlet, kl_divergence as kl
+from torch.distributions import Distribution, Normal, LogNormal, Gamma, Poisson, Dirichlet
+from torch.distributions import kl_divergence as kl
+
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 random.seed(0)
@@ -254,7 +256,7 @@ class AVAE(nn.Module):
                )
 
 
-class AVAE_poe(nn.Module):
+class AVAE_PoE(nn.Module):
     """ 
     Model design:
         p(x|z)=f(z)
@@ -722,7 +724,6 @@ def valid_model(model):
 def train(
     model,
     dataloader,
-    dataset,
     device,
     optimizer,
 ):
@@ -779,10 +780,92 @@ def train(
 
     return train_loss, train_reconst, train_z, train_c, train_n, corr_list
 
+
+def train_poe(
+    model,
+    dataloader,
+    device,
+    optimizer,
+):
+    model.train()
+
+    running_loss = 0.0
+    running_z = 0.0
+    running_c = 0.0
+    running_n = 0.0
+    running_reconst = 0.0
+    counter = 0
+    corr_list = []
+    for i, (x,
+            x_peri,
+            library_i,
+            adata_img,
+            data_loc,
+            xs_k,
+            ) in enumerate(dataloader):
+        counter += 1
+        x = x.float()
+        x = x.to(device)
+
+        mini_batch, _ = x.shape
+
+        adata_img = adata_img.reshape(mini_batch, -1).float()
+        adata_img = adata_img / 255
+        adata_img = adata_img.to(device)
+
+        # gene expression, 1D data
+        inference_outputs = model.inference(x)
+
+        # image, 2D data
+        img_path_outputs = model.predict_imgVAE(adata_img)
+
+        generative_outputs = model.generative(inference_outputs, x, xs_k, library_i, img_path_outputs)
+
+        # POE
+        poe_path_outputs = model.predictor_POE(inference_outputs,
+                                               generative_outputs,
+                                               img_path_outputs
+                                               )
+
+        (loss,
+         reconst_loss,
+         kl_divergence_z,
+         kl_divergence_c,
+         kl_divergence_n
+         ) = model.get_loss(generative_outputs,
+                            inference_outputs,
+                            img_path_outputs,
+                            poe_path_outputs,
+                            x,
+                            x_peri,
+                            library_i,
+                            adata_img
+                            )
+
+        optimizer.zero_grad()
+        loss.backward()
+
+        running_loss += loss.item()
+        running_reconst += reconst_loss.item()
+        running_z += kl_divergence_z.item()
+        running_c += kl_divergence_c.item()
+        running_n += kl_divergence_n.item()
+
+        optimizer.step()
+
+        # corr_list.append(valid_model(model))
+
+    train_loss = running_loss / counter
+    train_reconst = running_reconst / counter
+    train_z = running_z / counter
+    train_c = running_c / counter
+    train_n = running_n / counter
+
+    return train_loss, train_reconst, train_z, train_c, train_n, corr_list
+
+
 # Reference:
 # https://github.com/YosefLab/scvi-tools/blob/master/scvi/distributions/_negative_binomial.py
-from torch.distributions import kl_divergence, Distribution
-from torch.distributions import Gamma,Poisson
 class NegBinom(Distribution):
     """
     Gamma-Poisson mixture approximation of Negative Binomial(mean, dispersion)

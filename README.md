@@ -5,7 +5,6 @@
 
 Starfysh is an end-to-end toolbox for analysis and integration of ST datasets. In summary, the Starfysh framework consists of reference-free deconvolution of cell types and cell states, which can be improved with integration of paired histology images of tissues, if available. To facilitate comparison of tissues between healthy or disease contexts and deriving differential spatial patterns, Starfysh is capable of integrating data from multiple tissues and further identifies common or sample-specific spatial “hubs”, defined as neighborhoods with a unique composition of cell types. To uncover mechanisms underlying local and long-range communication, Starfysh performs downstream analysis on the spatial organization of hubs and identifies critical genes with spatially varying patterns as well as cell-cell interaction networks. 
 
-To circumvent the need for a single-cell reference in deconvolving cell types, Starfysh leverages two key concepts to determine spots with the most distinct expression profiles as “anchors” that in turn pull apart the remainder of spots: First, Starfysh incorporates a compendium of known cell type marker genesets as well as any additional markers provided by the user. Assuming that the spots with the highest overall expression of a cell type geneset are likely to have the highest proportion of that cell type, these spots form an initial set of anchors. Second, since cell state markers can be context-dependent or not well-characterized, Starfysh utilizes archetypal analysis to refine the initial anchor set and further adds non-overlapping archetypes as additional anchors to enable discovery of novel cell states or a hierarchy of cell states. This feature is particularly useful in characterizing tissue-specific cell states (e.g. patient-specific tumor cell states), their phenotypic transformation in space and associated crosstalk with the microenvironment.
 
 <img src=figure/github_figure_1.png width="1000" />
 
@@ -15,40 +14,20 @@ To circumvent the need for a single-cell reference in deconvolving cell types, S
 
 ## Update
 - V 1.0.0 
-  - [Stafysh Documents here](http://starfysh.readthedocs.io)
-  - Check the [tutorial on a simple simulated data](https://github.com/azizilab/starfysh/blob/main/notebooks/Starfysh%20tutorial%20on%20a%20toy%20dataset.ipynb)
+  - Check out Starfysh [tutorial & documentation] (http://starfysh.readthedocs.io) & example [dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link)
   
-  - Incoming tutorial: 
+  - Additional tutorial (coming soon!): 
   
-     - with integration of histology
-     
-     - with an real ST data example
+     - Histology integration 
+     - Downstream analysis & multi-sample integraion
   
-  - Check our preprint
+  - Check our preprint (coming soon!)
   
 
   
-- V 0.1 (on Zenodo):  
+- V 0.1.0 (on Zenodo):  
+  
   - Cite as: He, Siyu, Jin, Yinuo, Nazaret, Achille, Shi, Lingting, Chen, Xueer, & Azizi, Elham. (2022). STARFYSH. Zenodo. [link here](https://doi.org/10.5281/zenodo.6950761)
-
-
-
-## Models:
-- Semi-supervised learning with Auxiliary Variational Autoencoder (AVAE) for cell-type deconvolution
-- Archetypal analysis for unsupervised cell-type discovery (novel cell types) & marker gene refinement (existing annotated cell types)
-- Product-of-Experts (PoE) for H&E image integration
-
-- Input:
-  - Spatial Transcriptomics count matrix
-  - Annotated signature gene sets
-  - (Optional): paired H&E image
-  
-- Output:
-  - Spot-wise deconvolution matrix (`q(c)`)
-  - Low-dimensional manifold representation (`q(z)`)
-  - Clusterings (single-sample) / Hubs (multiple-sample integration) given the deconvolution results
-  - Co-localization networks across cell types and Spatial R-L interactions
-  - Imputated count matrix (`p(x)`)
 
 ## Installation
 ```bash
@@ -59,13 +38,35 @@ python setup.py install --user
 pip uninstall starfysh
 ```
 
+## Models & I/O:
+- Semi-supervised learning with Auxiliary Variational Autoencoder (AVAE) for cell-type deconvolution
+- Archetypal analysis for unsupervised cell-type discovery (novel cell types) & marker gene refinement (existing annotated cell types)
+- Product-of-Experts (PoE) for H&E image integration
+
+
+- Input:
+
+  - Spatial Transcriptomics count matrix
+  - Annotated signature gene sets (`see example <https://drive.google.com/file/d/1yAfAj7PaFJZph88MwhWNXL5Kx5dKMngZ/view?usp=share_link>`_)
+  - (Optional): paired H&E image
+
+- Output:
+
+  - Spot-wise deconvolution matrix (`q(c)`)
+  - Low-dimensional manifold representation (`q(z)`)
+  - Spatial hubs (in-sample or multiple-sample integration)
+  - Co-localization networks across cell types and Spatial receptor-ligand (R-L) interactions
+  - Reconstructed count matrix (`p(x)`)
+
+
 ## Features:
-- Deconvoluting cell types 
+-  Deconvolving cell types / cell states
 
-- Generating histology
+- Discovering and learning novel cell states
 
-- Identifying new cell types
-Use spatial transcriptomics expression data & annotated signature gene sets as input; perform deconvolution and reconstructure features from the bottle neck neurons; we hope these could capture gene sets representing specific functional modules.
+-  Integrating with histology images and multi-sample integration
+
+- Downstream analysis: spatial hub identification, cell-type colocalization networks & receptor-ligand (R-L) interactions
 
 
 ## Directories
@@ -93,7 +94,7 @@ from starfysh import (
 
 # (1) Loading dataset & signature gene sets
 data_path = 'data/' # specify data directory
-sig_path = 'signature/signatures.csv' # specify signature directory
+sig_path = 'data/tnbc_signatures.csv' # specify signature directory
 sample_id = 'CID44971_TNBC'
 
 # --- (a) ST matrix ---

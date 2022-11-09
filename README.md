@@ -14,7 +14,7 @@ Starfysh is an end-to-end toolbox for analysis and integration of ST datasets. I
 
 ## Update
 - V 1.0.0 
-  - Check out Starfysh [tutorial & documentation] (http://starfysh.readthedocs.io) & example [dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link)
+  - Check out Starfysh [tutorial & documentation](http://starfysh.readthedocs.io) & example [dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link)
   
   - Additional tutorial (coming soon!): 
   

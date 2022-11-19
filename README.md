@@ -1,35 +1,32 @@
 <img src=figure/logo.png width="700" />
 
-
 ## Starfysh: Spatial Transcriptomic Analysis using Reference-Free auxiliarY deep generative modeling and Shared Histology
 
-Starfysh is an end-to-end toolbox for analysis and integration of ST datasets. In summary, the Starfysh framework consists of reference-free deconvolution of cell types and cell states, which can be improved with integration of paired histology images of tissues, if available. To facilitate comparison of tissues between healthy or disease contexts and deriving differential spatial patterns, Starfysh is capable of integrating data from multiple tissues and further identifies common or sample-specific spatial “hubs”, defined as neighborhoods with a unique composition of cell types. To uncover mechanisms underlying local and long-range communication, Starfysh performs downstream analysis on the spatial organization of hubs and identifies critical genes with spatially varying patterns as well as cell-cell interaction networks. 
-
+Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Transcriptomic (ST) datasets. In summary, the Starfysh framework enables reference-free deconvolution of cell types and cell states and can be improved with the integration of paired histology images of tissues, if available. To facilitate the comparison of tissues between healthy and diseased contexts and the derivation of differential spatial patterns, Starfysh is capable of integrating data from multiple tissues. In particular, Starfysh identifies common or sample-specific spatial “hubs”, defined as neighborhoods with a unique composition of cell types. To uncover mechanisms underlying local and long-range communication, Starfysh can be used to perform downstream analysis on the spatial organization of hubs. This analysis includes the identification of critical genes with spatially varying patterns as well as cell-cell interaction networks.
 
 <img src=figure/github_figure_1.png width="1000" />
 
-
 <img src=figure/github_figure_2.png width="1000" />
 
-
 ## Update
-- V 1.0.0 
-  - Check out Starfysh [tutorial & documentation](http://starfysh.readthedocs.io) & example [dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link)
-  
-  - Additional tutorial (coming soon!): 
-  
-     - Histology integration 
-     - Downstream analysis & multi-sample integraion
-  
-  - Check our preprint (coming soon!)
-  
 
-  
-- V 0.1.0 (on Zenodo):  
-  
+- V 1.0.0
+
+  - Check out Starfysh [tutorial & documentation](http://starfysh.readthedocs.io) & example [dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link)
+
+  - Additional tutorial (coming soon!):
+
+    - Histology integration
+    - Downstream analysis & multi-sample integraion
+
+  - Check our preprint (coming soon!)
+
+- V 0.1.0 (on Zenodo):
+
   - Cite as: He, Siyu, Jin, Yinuo, Nazaret, Achille, Shi, Lingting, Chen, Xueer, & Azizi, Elham. (2022). STARFYSH. Zenodo. [link here](https://doi.org/10.5281/zenodo.6950761)
 
 ## Installation
+
 ```bash
 # install
 python setup.py install --user
@@ -39,15 +36,15 @@ pip uninstall starfysh
 ```
 
 ## Models & I/O:
+
 - Semi-supervised learning with Auxiliary Variational Autoencoder (AVAE) for cell-type deconvolution
 - Archetypal analysis for unsupervised cell-type discovery (novel cell types) & marker gene refinement (existing annotated cell types)
 - Product-of-Experts (PoE) for H&E image integration
 
-
 - Input:
 
   - Spatial Transcriptomics count matrix
-  - Annotated signature gene sets (`see example <https://drive.google.com/file/d/1yAfAj7PaFJZph88MwhWNXL5Kx5dKMngZ/view?usp=share_link>`_)
+  - Annotated signature gene sets (`see example <https://drive.google.com/file/d/1yAfAj7PaFJZph88MwhWNXL5Kx5dKMngZ/view?usp=share_link>`\_)
   - (Optional): paired H&E image
 
 - Output:
@@ -58,18 +55,18 @@ pip uninstall starfysh
   - Co-localization networks across cell types and Spatial receptor-ligand (R-L) interactions
   - Reconstructed count matrix (`p(x)`)
 
-
 ## Features:
--  Deconvolving cell types / cell states
+
+- Deconvolving cell types / cell states
 
 - Discovering and learning novel cell states
 
--  Integrating with histology images and multi-sample integration
+- Integrating with histology images and multi-sample integration
 
 - Downstream analysis: spatial hub identification, cell-type colocalization networks & receptor-ligand (R-L) interactions
 
-
 ## Directories
+
 ```
 .
 ├── data:           Spatial Transcritomics & synthetic simulation datasets
@@ -79,13 +76,14 @@ pip uninstall starfysh
 ```
 
 ## Quickstart
+
 ```python
 import numpy as np
 import pandas as pd
 import torch
 from starfysh import (
     AA,
-    dataloader,  
+    dataloader,
     starfysh,
     utils,
     plot_utils,

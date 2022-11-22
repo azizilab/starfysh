@@ -20,11 +20,11 @@ Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Tr
     - Downstream analysis & multi-sample integraion
 
   - Check our preprint (coming soon!)
-  - Cite as: Siyu He, Yinuo Jin, Achille Nazaret, Lingting Shi, Xueer Chen, Sham Rampersaud, Bahawar Dhillon, Izabella Valdez, Lauren E Friend, Joy Linyue Fan, Cameron Y Park, Rachel Mintz, Yeh-Hsing Lao, David Carrera, Kaylee W Fang, Kaleem Mehdi, Madeline Rohde, José L. McFaline-Figueroa, David Blei, … Elham Azizi. (2022). azizilab/starfysh: STARFYSH (v1.0.0). Zenodo. https://doi.org/10.5281/zenodo.7342798 
+  - Zenodo V 1.0.0: Siyu He, Yinuo Jin, Achille Nazaret, Lingting Shi, Xueer Chen, Sham Rampersaud, Bahawar Dhillon, Izabella Valdez, Lauren E Friend, Joy Linyue Fan, Cameron Y Park, Rachel Mintz, Yeh-Hsing Lao, David Carrera, Kaylee W Fang, Kaleem Mehdi, Madeline Rohde, José L. McFaline-Figueroa, David Blei, … Elham Azizi. (2022). azizilab/starfysh: STARFYSH (v1.0.0). Zenodo. https://doi.org/10.5281/zenodo.7342798 
 
-- V 0.1.0 (on Zenodo):
+- V 0.1.0:
 
-  - Cite as: He, Siyu, Jin, Yinuo, Nazaret, Achille, Shi, Lingting, Chen, Xueer, & Azizi, Elham. (2022). STARFYSH. Zenodo. [link here](https://doi.org/10.5281/zenodo.6950761)
+  - Zenodo V 0.1.0: He, Siyu, Jin, Yinuo, Nazaret, Achille, Shi, Lingting, Chen, Xueer, & Azizi, Elham. (2022). STARFYSH. Zenodo. 
 
 ## Installation
 

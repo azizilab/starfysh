@@ -19,12 +19,8 @@ Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Tr
     - Histology integration
     - Downstream analysis & multi-sample integraion
 
-  - Check our preprint (coming soon!)
-  - Zenodo V 1.0.0: Siyu He, Yinuo Jin, Achille Nazaret, Lingting Shi, Xueer Chen, Sham Rampersaud, Bahawar Dhillon, Izabella Valdez, Lauren E Friend, Joy Linyue Fan, Cameron Y Park, Rachel Mintz, Yeh-Hsing Lao, David Carrera, Kaylee W Fang, Kaleem Mehdi, Madeline Rohde, José L. McFaline-Figueroa, David Blei, … Elham Azizi. (2022). azizilab/starfysh: STARFYSH (v1.0.0). Zenodo. https://doi.org/10.5281/zenodo.7342798 
-
-- V 0.1.0:
-
-  - Zenodo V 0.1.0: He, Siyu, Jin, Yinuo, Nazaret, Achille, Shi, Lingting, Chen, Xueer, & Azizi, Elham. (2022). STARFYSH. Zenodo. 
+  - Check our [preprint](https://www.biorxiv.org/content/10.1101/2022.11.21.517420v1)
+  - [Zenodo V 1.0.0](https://doi.org/10.5281/zenodo.7342798)
 
 ## Installation
 
@@ -45,7 +41,7 @@ pip uninstall starfysh
 - Input:
 
   - Spatial Transcriptomics count matrix
-  - Annotated signature gene sets (`see example <https://drive.google.com/file/d/1yAfAj7PaFJZph88MwhWNXL5Kx5dKMngZ/view?usp=share_link>`\_)
+  - Annotated signature gene sets (see [example](https://drive.google.com/file/d/1yAfAj7PaFJZph88MwhWNXL5Kx5dKMngZ/view?usp=share_link))
   - (Optional): paired H&E image
 
 - Output:

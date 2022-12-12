@@ -289,7 +289,7 @@ class AVAE_PoE(nn.Module):
         win_loglib : float
             Log-library size smoothed with neighboring spots
         """
-        super(AVAE_poe, self).__init__()
+        super(AVAE_PoE, self).__init__()
 
         self.win_loglib = torch.Tensor(win_loglib)
 
@@ -505,7 +505,11 @@ class AVAE_PoE(nn.Module):
         xs_k,
         img_path_outputs
     ):
-
+        """
+        xs_k : torch.Tensor
+            Z-normed avg. gene exprs
+        """
+        xs_k = xs_k.to()
         qz = inference_outputs['qz']
         ql = inference_outputs['ql']
         ql_m = inference_outputs['ql_m']
@@ -581,7 +585,8 @@ class AVAE_PoE(nn.Module):
         x,
         x_peri,
         library,
-        adata_img
+        adata_img,
+        device
     ):
 
         beta = 0.001
@@ -645,7 +650,7 @@ class AVAE_PoE(nn.Module):
 
         reconst_loss = -NegBinom(px_rate, torch.exp(px_r)).log_prob(x).sum(-1).mean()
 
-        loss_exp = reconst_loss + kl_divergence_z + kl_divergence_c + kl_divergence_n
+        loss_exp = reconst_loss.to(device) + kl_divergence_z.to(device) + kl_divergence_c.to(device) + kl_divergence_n.to(device)
 
         mu_img = img_path_outputs['img_z_mu']
         logvar_img = img_path_outputs['img_z_logv']
@@ -806,9 +811,11 @@ def train_poe(
         counter += 1
         x = x.float()
         x = x.to(device)
+        x_peri = x_peri.to(device)
+        library_i = library_i.to(device)
+        xs_k = xs_k.to(device)
 
         mini_batch, _ = x.shape
-
         adata_img = adata_img.reshape(mini_batch, -1).float()
         adata_img = adata_img / 255
         adata_img = adata_img.to(device)
@@ -819,7 +826,7 @@ def train_poe(
         # image, 2D data
         img_path_outputs = model.predict_imgVAE(adata_img)
 
-        generative_outputs = model.generative(inference_outputs, x, xs_k, library_i, img_path_outputs)
+        generative_outputs = model.generative(inference_outputs, xs_k, img_path_outputs)
 
         # POE
         poe_path_outputs = model.predictor_POE(inference_outputs,
@@ -839,7 +846,8 @@ def train_poe(
                             x,
                             x_peri,
                             library_i,
-                            adata_img
+                            adata_img,
+                            device
                             )
 
         optimizer.zero_grad()
@@ -920,7 +928,7 @@ class NegBinom(Distribution):
     
 def model_eval(
     model,
-    adata_sample,
+    adata,
     sig_mean,
     device,
     library_i,
@@ -930,15 +938,30 @@ def model_eval(
     
     model.eval()
     library_i = torch.Tensor(library_i[:,None])
-    x_valid = torch.Tensor(np.array(adata_sample.to_df()))
+    x_valid = torch.Tensor(np.array(adata.to_df()))
     x_valid = x_valid.to(device)
     gene_sig_exp_valid = torch.Tensor(np.array(sig_mean)).to(device)
     library = torch.log(x_valid.sum(1)).unsqueeze(1)
 
-    inference_outputs =  model.inference(x_valid)
+    inference_outputs = model.inference(x_valid)
     generative_outputs = model.generative(inference_outputs, gene_sig_exp_valid)
 
     px = NegBinom(generative_outputs["px_rate"], torch.exp(generative_outputs["px_r"])).sample().detach().cpu().numpy()
+
+    # Save inference & generative outputs in adata
+    for rv in inference_outputs.keys():
+        val = inference_outputs[rv].detach().cpu().numpy().squeeze()
+        adata.obsm['rv'] = val
+
+    for rv in generative_outputs.keys():
+        if rv == 'px_r':  # Posterior avg. znorm signature means
+            val = generative_outputs[rv].data.detach().cpu().numpy().squeeze()
+            adata.varm[rv] = val
+        else:
+            val = generative_outputs[rv].data.detach().cpu().numpy().squeeze()
+            adata.obsm[rv] = val
+    adata.obsm['px'] = px
+
     return inference_outputs, generative_outputs, px
 
 

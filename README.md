@@ -89,7 +89,7 @@ from starfysh import (
 
 # (1) Loading dataset & signature gene sets
 data_path = 'data/' # specify data directory
-sig_path = 'data/tnbc_signatures.csv' # specify signature directory
+sig_path = 'data/bc_signatures_version_1013.csv' # specify signature directory
 sample_id = 'CID44971_TNBC'
 
 # --- (a) ST matrix ---
@@ -100,10 +100,10 @@ adata, adata_norm = utils.load_adata(
 )
 
 # --- (b) paired H&E image + spots info ---
-hist_img, map_info = utils.preprocess_img(
+img, map_info = utils.preprocess_img(
     data_path,
     sample_id,
-    adata.obs.index,
+    adata_index=adata.obs.index,
     hchannal=False
 )
 
@@ -120,12 +120,10 @@ args = utils.VisiumArguments(
     adata,
     adata_norm,
     gene_sig,
-    map_info,
-    n_anchors=60, # number of anchor spots per cell-type
-    window_size=5  # library size smoothing radius
+    map_info
 )
 
-adata, adata_noprm = args.get_adata()
+adata, adata_norm = args.get_adata()
 
 # --- (b) Model training ---
 n_restarts = 3
@@ -148,4 +146,7 @@ inferences, generatives, px = starfysh.model_eval(
     device,
     args.log_lib,
 )
+
+# Deconvolution results
+deconv_prop = inferences['qc_m'].detach().cpu().numpy()
 ```

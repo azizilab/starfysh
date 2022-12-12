@@ -21,7 +21,6 @@ class VisiumDataset(Dataset):
         spots = adata.obs_names
         genes = adata.var_names
 
-        
         x = adata.X if isinstance(adata.X, np.ndarray) else adata.X.A
         self.expr_mat = pd.DataFrame(x, index=spots, columns=genes)
         self.gexp = args.sig_mean_znorm
@@ -39,9 +38,9 @@ class VisiumDataset(Dataset):
         )
 
         return (sample,
-                torch.Tensor(self.gexp.iloc[idx, :]),
-                torch.Tensor(self.anchor_idx[idx, :]),
-                torch.Tensor(self.library_n[idx,None]),
+                torch.Tensor(self.gexp.iloc[idx, :]), # z-normed signature exprs
+                torch.Tensor(self.anchor_idx[idx, :]), # anchors
+                torch.Tensor(self.library_n[idx,None]), # library size
                )
 
 

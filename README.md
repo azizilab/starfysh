@@ -16,7 +16,7 @@ Starfysh is an end-to-end toolbox for analysis and integration of ST datasets. I
 - V 1.0.0 
   - Check out Starfysh [tutorial & documentation](http://starfysh.readthedocs.io) & example [dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link)
   
-  - Additional tutorial (coming soon!): 
+  - Incoming tutorial (coming soon!): 
   
      - Histology integration 
      - Downstream analysis & multi-sample integraion
@@ -26,7 +26,6 @@ Starfysh is an end-to-end toolbox for analysis and integration of ST datasets. I
 
   
 - V 0.1.0 (on Zenodo):  
-  
   - Cite as: He, Siyu, Jin, Yinuo, Nazaret, Achille, Shi, Lingting, Chen, Xueer, & Azizi, Elham. (2022). STARFYSH. Zenodo. [link here](https://doi.org/10.5281/zenodo.6950761)
 
 ## Installation

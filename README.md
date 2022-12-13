@@ -27,9 +27,6 @@ Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Tr
 ```bash
 # install
 python setup.py install --user
-
-# uninstall
-pip uninstall starfysh
 ```
 
 ## Models & I/O:

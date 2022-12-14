@@ -13,6 +13,7 @@ Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Tr
 - V 1.0.0
 
   - Check out Starfysh [tutorial & documentation](http://starfysh.readthedocs.io) & example [dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link)
+  - Check out this [Starfysh google colab notebook](https://drive.google.com/file/d/1oCUvzuvUyWej7D5KW8YpG9Wz-g2c6U1v/view?usp=sharing) to test Starfysh on real data
 
   - Additional tutorial (coming soon!):
 

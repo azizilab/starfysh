@@ -150,7 +150,9 @@ deconv_prop = inferences['qc_m'].detach().cpu().numpy()
 ```
 
 ## How to cite Starfysh
-Please cite our preprint: 
+Please cite our preprint https://www.biorxiv.org/content/10.1101/2022.11.21.517420v1
+
+Or:
 ### BibTex
 ```
 @article{he2022starfysh,
@@ -165,6 +167,7 @@ Please cite our preprint:
 ```
 He, S., Jin, Y., Nazaret, A., Shi, L., Chen, X., Rampersaud, S., ... & Azizi, E. (2022). Starfysh reveals heterogeneous spatial dynamics in the breast tumor microenvironment. bioRxiv.
 ```
+
 If you have questions, please contact the authors:
 
 - Siyu He - sh3846@columbia.edu

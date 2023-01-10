@@ -8,19 +8,25 @@ Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Tr
 
 <img src=figure/github_figure_2.png width="1000" />
 
+## Quickstart of our tutorials on colab
+  - [1. Basic deconvlution on an examplary breast cancer data.](https://colab.research.google.com/drive/152y-RpmRTEUJ16c_kF3KRwSRjm_THupv?authuser=1) 
+  
+  - [2. Deconvlution and integration of multiple datasets.]
+  
 ## Update
 
 - V 1.0.0
 
-  - Check out Starfysh [tutorial & documentation](http://starfysh.readthedocs.io) & example [dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link)
-  - Check out this [Starfysh google colab notebook](https://drive.google.com/file/d/1oCUvzuvUyWej7D5KW8YpG9Wz-g2c6U1v/view?usp=sharing) to test Starfysh on real data
+  - [Documentation of Starfysh](http://starfysh.readthedocs.io) 
+  
+  - [Example dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link)
 
   - Additional tutorial (coming soon!):
 
     - Histology integration
     - Downstream analysis & multi-sample integraion
 
-  - Check our [preprint](https://www.biorxiv.org/content/10.1101/2022.11.21.517420v1)
+  - [bioRxiv preprint](https://www.biorxiv.org/content/10.1101/2022.11.21.517420v1)
   - [Zenodo V 1.0.0](https://doi.org/10.5281/zenodo.7342798)
 
 ## Installation

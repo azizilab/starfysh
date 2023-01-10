@@ -9,7 +9,7 @@ Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Tr
 <img src=figure/github_figure_2.png width="1000" />
 
 ## Quickstart of our tutorials on colab
-  - [1. Basic deconvlution on an examplary breast cancer data.](https://colab.research.google.com/drive/152y-RpmRTEUJ16c_kF3KRwSRjm_THupv?authuser=1) 
+  - [1. Basic deconvlution on an examplary breast cancer data (easy download of datasets and gene signature included).](https://colab.research.google.com/drive/152y-RpmRTEUJ16c_kF3KRwSRjm_THupv?authuser=1) 
   
   - [2. Deconvlution and integration of multiple datasets.]
   

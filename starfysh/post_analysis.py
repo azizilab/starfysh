@@ -183,7 +183,7 @@ def gene_mean_vs_inferred_prop(inference_outputs, visium_args,idx):
     v_stacked = np.vstack([v1, v2])
     den = gaussian_kde(v_stacked)(v_stacked)
     
-    ax.scatter(v1,v2,c=den,s=1,cmap='turbo',vmax=den.max()/3)
+    ax.scatter(v1,v2,c=den,s=1,cmap='jet',vmax=den.max()/3)
     
     ax.set_aspect('equal')
     ax.spines['right'].set_visible(False)

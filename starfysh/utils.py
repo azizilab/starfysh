@@ -125,7 +125,7 @@ class VisiumArguments:
         anchors_df = pd.DataFrame.from_dict(self.pure_dict, orient='columns')
         return anchors_df.applymap(
             lambda x:
-            np.where(self.adata.obs.index == x)[0][0] # TODO: make sure adata.obs index is formatted as "location_i"
+            np.where(self.adata.obs.index == x)[0][0]
         )
 
     def get_img_patches(self):
@@ -654,7 +654,7 @@ def preprocess_img(
 
 
 def gene_for_train(adata, df_sig, verbose=True):
-    """find the varibale gene name, the mattered gene signatures, and the combined variable+signature for training"""
+    """find the union of sigatures & highly variable genes"""
 
     variable_gene = adata.var_names[adata.var['highly_variable']]
     if verbose:
@@ -666,16 +666,11 @@ def gene_for_train(adata, df_sig, verbose=True):
     if verbose:
         print('\t After filter out some genes in the signature not in the var_names ...', sig_gname_filtered.shape)
 
-    # filter out some genes not highly expressed in the signature
-    sig_gname_filtered = sig_gname_filtered[adata.to_df().loc[:, sig_gname_filtered].sum() > 0]
+    sig_var_union = np.union1d(np.asrray(variable_gene), sig_gname_filtered)
     if verbose:
-        print('\t After filter out some genes not highly expressed in the signature ...', sig_gname_filtered.shape)
+        print('\t Combine the variable and siganture, the total unique gene number is ...', len(sig_var_union))
 
-    sig_variable_gene_inter = {*np.array(variable_gene), *sig_gname_filtered}
-    if verbose:
-        print('\t Combine the varibale and siganture, the total unique gene number is ...', len(sig_variable_gene_inter))
-
-    return list(variable_gene), list(sig_gname_filtered), list(sig_variable_gene_inter)
+    return sig_var_union
 
 
 def get_adata_wsig(adata, gene_sig):

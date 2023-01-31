@@ -126,7 +126,7 @@ class VisiumArguments:
         anchors_df = pd.DataFrame.from_dict(self.pure_dict, orient='columns')
         return anchors_df.applymap(
             lambda x:
-            np.where(self.adata.obs.index == x)[0][0] # TODO: make sure adata.obs index is formatted as "location_i"
+            np.where(self.adata.obs.index == x)[0][0]
         )
 
     def get_img_patches(self):

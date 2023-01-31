@@ -12,17 +12,15 @@ from scipy.stats import pearsonr, gaussian_kde
 
 
 
-def get_z_umap(inference_outputs,map_info):
-    
-    qz_m_ct = inference_outputs["qz_m_ct"].detach().cpu().numpy()
-    
-    fit = umap.UMAP(
-            n_neighbors=45,
-            min_dist=0.5,
-                   )
-    u = fit.fit_transform(qz_m_ct.reshape([qz_m_ct.shape[0],-1]))    
+def get_z_umap(qz_m, index):
+    # TODO: double check whether plot from `qz_m_ct` or `qz_m`
+    # qz_m_ct = inference_outputs["qz_m_ct"].detach().cpu().numpy()
+    fit = umap.UMAP(n_neighbors=45, min_dist=0.5)
+
+    # u = fit.fit_transform(qz_m_ct.reshape([qz_m_ct.shape[0],-1]))
+    u = fit.fit_transform(qz_m)
     u = pd.DataFrame(u,columns=['umap1','umap2'])
-    u.index = map_info.index
+    u.index = index
     return u
 
 
@@ -38,7 +36,6 @@ def plot_type_all(inference_outputs,u, proportions):
     
     
 def get_corr_map(inference_outputs,proportions):
-    
     qc_m_n = inference_outputs["qc_m"].detach().cpu().numpy()
     corr_map_qcm = np.zeros([qc_m_n.shape[1],qc_m_n.shape[1]])
 

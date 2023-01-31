@@ -337,7 +337,6 @@ class AVAE_PoE(nn.Module):
 
         # gene dispersion
         self.px_r = torch.nn.Parameter(torch.randn(self.c_in), requires_grad=True)
-        # self.alpha= torch.nn.Parameter(torch.rand(1)*1e3,requires_grad=True)
 
         # neural network g to get the x_m and x_v, p(x|z), g(z,\phi_3)=[x_m,x_v]
         self.px_hidden_decoder = nn.Sequential(
@@ -929,19 +928,13 @@ class NegBinom(Distribution):
 def model_eval(
     model,
     adata,
-    sig_mean,
+    visium_args,
     device,
-    library_i,
-    lib_low=5.0
 ):
-    lib_low = torch.exp(torch.Tensor([lib_low])).to(device)
-    
     model.eval()
-    library_i = torch.Tensor(library_i[:,None])
     x_valid = torch.Tensor(np.array(adata.to_df()))
     x_valid = x_valid.to(device)
-    gene_sig_exp_valid = torch.Tensor(np.array(sig_mean)).to(device)
-    library = torch.log(x_valid.sum(1)).unsqueeze(1)
+    gene_sig_exp_valid = torch.Tensor(np.array(visium_args.sig_mean)).to(device)
 
     inference_outputs = model.inference(x_valid)
     generative_outputs = model.generative(inference_outputs, gene_sig_exp_valid)
@@ -949,9 +942,10 @@ def model_eval(
     px = NegBinom(generative_outputs["px_rate"], torch.exp(generative_outputs["px_r"])).sample().detach().cpu().numpy()
 
     # Save inference & generative outputs in adata
+    adata.varm['cell_types'] = visium_args.gene_sig.columns
     for rv in inference_outputs.keys():
         val = inference_outputs[rv].detach().cpu().numpy().squeeze()
-        adata.obsm['rv'] = val
+        adata.obsm[rv] = val
 
     for rv in generative_outputs.keys():
         if rv == 'px_r':  # Posterior avg. znorm signature means
@@ -972,8 +966,8 @@ def model_ct_exp(
     device,
     library_i,
     ct_idx,
-    lib_low=5.0
 ):
+    # TODO: convert cell-type specific expressions to np.ndarray
     model.eval()
     library_i = torch.Tensor(library_i[:,None])
     x_valid = torch.Tensor(np.array(adata_sample.to_df()))

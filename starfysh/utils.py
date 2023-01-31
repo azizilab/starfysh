@@ -13,6 +13,7 @@ import torch.optim as optim
 from sklearn.neighbors import NearestNeighbors
 from sklearn.linear_model import LinearRegression
 from scipy.stats import zscore
+from scipy.sparse import csr_matrix
 from torch.utils.data import DataLoader
 
 import sys
@@ -653,31 +654,6 @@ def preprocess_img(
     }
 
 
-def gene_for_train(adata, df_sig, verbose=True):
-    """find the varibale gene name, the mattered gene signatures, and the combined variable+signature for training"""
-
-    variable_gene = adata.var_names[adata.var['highly_variable']]
-    if verbose:
-        print('\t The number of original variable genes in the dataset', variable_gene.shape)
-        print('\t The number of siganture genes in the dataset', np.unique(df_sig.values.flatten().astype(str)).shape)
-
-    # filter out some genes in the signature not in the var_names
-    sig_gname_filtered = np.intersect1d(adata.var_names, np.unique(df_sig.values.flatten().astype(str)))
-    if verbose:
-        print('\t After filter out some genes in the signature not in the var_names ...', sig_gname_filtered.shape)
-
-    # filter out some genes not highly expressed in the signature
-    sig_gname_filtered = sig_gname_filtered[adata.to_df().loc[:, sig_gname_filtered].sum() > 0]
-    if verbose:
-        print('\t After filter out some genes not highly expressed in the signature ...', sig_gname_filtered.shape)
-
-    sig_variable_gene_inter = {*np.array(variable_gene), *sig_gname_filtered}
-    if verbose:
-        print('\t Combine the varibale and siganture, the total unique gene number is ...', len(sig_variable_gene_inter))
-
-    return list(variable_gene), list(sig_gname_filtered), list(sig_variable_gene_inter)
-
-
 def get_adata_wsig(adata, gene_sig):
     """
     Select intersection of HVGs from dataset & signature annotations
@@ -904,3 +880,34 @@ def refine_anchors(
         map_df, _ = aa_model.assign_archetypes(anchors)
 
     return visium_args
+
+
+# -------------------
+# Post-processing
+# -------------------
+
+def extract_feature(adata, key):
+    """
+    Extract generative / inference output from adata.obsm
+    generate dummy tmp. adata for plotting
+    """
+    assert key in adata.obsm.keys(), "Unfounded Starfysh generative / inference output: {}".format(key)
+
+    if key == 'qc_m':
+        cols = adata.varm['cell_type']
+    elif key == 'qz_m':
+        cols = ['z'+str(i) for i in range(adata.obsm[key].shape[1])]
+    else:
+        cols = 'density'
+
+    adata_dummy = sc.AnnData(
+        adata.X.A if isinstance(adata.X, csr_matrix) else adata.X,
+        adata.obs.index.to_frame(),
+        adata.var.index.to_frame()
+    )
+    adata_dummy.obs = pd.concat([
+        adata_dummy.obs,
+        pd.DataFrame(adata.obsm[key], index=adata.obs.index, columns=cols)
+    ], axis=1)
+
+    return adata_dummy

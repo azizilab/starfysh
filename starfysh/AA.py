@@ -77,8 +77,8 @@ class ArchetypalAnalysis:
 
 `       r : int
             Resolution parameter to control granularity of major archetypes
-            If two archetypes reside within r nearest neighbors, we shrink
-            the latter one.
+            If two archetypes reside within r nearest neighbors, the latter
+            one will be merged.
 
         display : bool
             Whether to display Intrinsic Dimension (ID) estimation plots
@@ -117,6 +117,8 @@ class ArchetypalAnalysis:
         X = self.count.T
         archetypes = []
         evs = []
+
+        # TODO: speedup with multiprocessing
         for i, k in enumerate(range(self.kmin, self.kmin+n_iters)):
             archetype, _, _, _, ev = PCHA(X, noc=k, delta=0.1)
             evs.append(ev)

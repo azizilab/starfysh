@@ -58,7 +58,7 @@ class VisiumPoEDataSet(VisiumDataset):
         super(VisiumPoEDataSet, self).__init__(adata, args)
         self.image = args.img
         self.map_info = args.map_info
-        self.patch_r = args.params['patch_r']
+        self.r = args.params['patch_r']
         self.spot_img_stack = []
 
         assert self.image is not None,\
@@ -66,12 +66,25 @@ class VisiumPoEDataSet(VisiumDataset):
             "please use regular `Starfysh` without PoE integration" \
             "if your dataset doesn't contain histology image"
 
+        # Retrieve image patch around each spot
+        scalef = args.scalefactor['tissue_hires_scalef']  # High-res scale factor
+        h, w, d = self.image.shape
+
         for i in range(len(self.expr_mat)):
-            img_xmin = int(self.map_info.iloc[i]['imagecol'])-self.patch_r
-            img_xmax = int(self.map_info.iloc[i]['imagecol'])+self.patch_r
-            img_ymin = int(self.map_info.iloc[i]['imagerow'])-self.patch_r
-            img_ymax = int(self.map_info.iloc[i]['imagerow'])+self.patch_r
-            self.spot_img_stack.append(self.image[img_ymin:img_ymax,img_xmin:img_xmax])
+            xc = int(np.round(self.map_info.iloc[i]['imagecol'] * scalef))
+            yc = int(np.round(self.map_info.iloc[i]['imagerow'] * scalef))
+
+            # boundary conditions: edge spots
+            yl, yr = max(0, yc-self.r), min(self.image.shape[0], yc+self.r)
+            xl, xr = max(0, xc-self.r), min(self.image.shape[1], xc+self.r)
+            top = max(0, self.r-yc)
+            bottom = h if h > (yc+self.r) else h-(yc+self.r)
+            left = max(0, self.r-xc)
+            right = w if w > (xc+self.r) else w-(xc+self.r)
+
+            patch = np.zeros((self.r*2, self.r*2, d))
+            patch[top:bottom, left:right] = self.image[yl:yr, xl:xr]
+            self.spot_img_stack.append(patch)
 
     def __len__(self):
         return len(self.expr_mat)

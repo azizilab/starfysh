@@ -1,10 +1,7 @@
 from __future__ import print_function
 
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.cm as cmx
-import matplotlib.colors as colors
-import sys
+import pandas as pd
 import os
 import random
 
@@ -144,6 +141,8 @@ class AVAE(nn.Module):
         hidden = self.c_enc(x_n)
 
         qc_m =  self.c_enc_m(hidden)
+
+        # TODO: solve the Dirichlet sampling issue (constraint: >= 0)
         qc = Dirichlet(self.alpha * qc_m).rsample()[:,:,None]
         hidden = self.z_enc(x_n)
         qz_m_ct = self.z_enc_m(hidden).reshape([x_n.shape[0],self.c_kn,self.c_bn])
@@ -434,6 +433,7 @@ class AVAE_PoE(nn.Module):
         hidden = self.c_enc(x_n)
         qc_m = self.c_enc_m(hidden)
 
+        # TODO: solve the Dirichlet sampling issue (constraint: >= 0)
         qc = Dirichlet(self.alpha * qc_m).rsample()[:, :, None]
 
         hidden = self.z_enc(x_n)
@@ -470,6 +470,8 @@ class AVAE_PoE(nn.Module):
 
         hidden = self.img_c_enc(x)
         img_qc_m = self.img_c_enc_m(hidden)
+
+        # TODO: resolve the Dirichlet sampling issue (constraint: >= 0)
         img_qc = Dirichlet(self.alpha * img_qc_m).rsample()[:, :, None]
 
         hidden = self.imgVAE_z_enc(x)
@@ -902,9 +904,6 @@ class NegBinom(Distribution):
         self.eps = eps
 
     def sample(self):
-        #print('self.theta=',self.theta)
-        #print('self.mu=',self.mu)
-        #assert (self.theta +self.eps> 0).sum() and (self.mu +self.eps> 0)
         lambdas = Gamma(
             concentration=self.theta,
             rate=(self.theta+self.eps) / (self.mu+self.eps),
@@ -929,31 +928,42 @@ def model_eval(
     model,
     adata,
     visium_args,
-    device,
+    poe=False,
+    device=torch.device('cpu')
 ):
     model.eval()
-    x_valid = torch.Tensor(np.array(adata.to_df()))
-    x_valid = x_valid.to(device)
-    gene_sig_exp_valid = torch.Tensor(np.array(visium_args.sig_mean)).to(device)
+    x_in = torch.Tensor(adata.to_df().values).to(device)
+    sig_means = torch.Tensor(visium_args.sig_mean_znorm.values).to(device)
 
-    inference_outputs = model.inference(x_valid)
-    generative_outputs = model.generative(inference_outputs, gene_sig_exp_valid)
+    inference_outputs = model.inference(x_in)
+    if poe:
+        img_in = torch.Tensor(visium_args.get_img_patches()).float().to(device)
+        img_outputs = model.predict_imgVAE(img_in)
+        generative_outputs = model.generative(inference_outputs, sig_means, img_outputs)
+    else:
+        generative_outputs = model.generative(inference_outputs, sig_means)
 
-    px = NegBinom(generative_outputs["px_rate"], torch.exp(generative_outputs["px_r"])).sample().detach().cpu().numpy()
+    px = NegBinom(
+        mu=generative_outputs["px_rate"],
+        theta=torch.exp(generative_outputs["px_r"])
+    ).sample().detach().cpu().numpy()
 
     # Save inference & generative outputs in adata
-    adata.varm['cell_types'] = visium_args.gene_sig.columns
     for rv in inference_outputs.keys():
         val = inference_outputs[rv].detach().cpu().numpy().squeeze()
         adata.obsm[rv] = val
 
     for rv in generative_outputs.keys():
-        if rv == 'px_r':  # Posterior avg. znorm signature means
-            val = generative_outputs[rv].data.detach().cpu().numpy().squeeze()
-            adata.varm[rv] = val
-        else:
-            val = generative_outputs[rv].data.detach().cpu().numpy().squeeze()
-            adata.obsm[rv] = val
+        try:
+            if rv == 'px_r' or rv == 'reconstruction':  # Posterior avg. znorm signature means
+                val = generative_outputs[rv].data.detach().cpu().numpy().squeeze()
+                adata.varm[rv] = val
+            else:
+                val = generative_outputs[rv].data.detach().cpu().numpy().squeeze()
+                adata.obsm[rv] = val
+        except:
+            print("rv: {} can't be stored".format(rv))
+
     adata.obsm['px'] = px
 
     return inference_outputs, generative_outputs, px
@@ -961,23 +971,30 @@ def model_eval(
 
 def model_ct_exp(
     model,
-    adata_sample,
-    sig_mean,
-    device,
-    library_i,
-    ct_idx,
+    adata,
+    visium_args,
+    device=torch.device('cpu')
 ):
-    # TODO: convert cell-type specific expressions to np.ndarray
-    model.eval()
-    library_i = torch.Tensor(library_i[:,None])
-    x_valid = torch.Tensor(np.array(adata_sample.to_df()))
-    x_valid = x_valid.to(device)
-    gene_sig_exp_valid = torch.Tensor(np.array(sig_mean)).to(device)
-    library = torch.log(x_valid.sum(1)).unsqueeze(1)
+    """
+    Obtain predicted cell-type specific expression in each spot
+    """
+    pred_exprs = {}
+    for ct_idx, cell_type in enumerate(adata.uns['cell_types']):
+        model.eval()
 
-    inference_outputs =  model.inference(x_valid)
-    inference_outputs['qz'] = inference_outputs['qz_m_ct'][:,ct_idx,:]
-    generative_outputs = model.generative(inference_outputs, gene_sig_exp_valid)
+        x_in = torch.Tensor(adata.to_df().values).to(device)
+        sig_mean = torch.Tensor(visium_args.sig_mean_znorm.values).to(device)
+        inference_outputs = model.inference(x_in)
+        inference_outputs['qz'] = inference_outputs['qz_m_ct'][:, ct_idx, :]
+        generative_outputs = model.generative(inference_outputs, sig_mean)
 
-    px = NegBinom(generative_outputs["px_rate"], torch.exp(generative_outputs["px_r"])).sample().detach().cpu().numpy()
-    return px
+        # Sample predicted expressions from learnt distribution parameters
+        px = NegBinom(generative_outputs["px_rate"], torch.exp(generative_outputs["px_r"])).sample()
+        px = px.detach().cpu().numpy()
+
+        # Save results in adata.obsm
+        px_df = pd.DataFrame(px, index=adata.obs_names, columns=adata.var_names)
+        pred_exprs[cell_type] = px_df
+        adata.obsm[cell_type + '_inferred_exprs'] = px
+
+    return pred_exprs

@@ -79,13 +79,20 @@ def pl_spatial_inf_feature(
     factor=None,
     vmin=0,
     vmax=None,
-    s=3,
+    s=10,
+    alpha=0,
     cmap='Spectral_r'
 ):
     """Spatial visualization of Starfysh inference features"""
-    if factor is not None:
-        assert factor in set(adata.varm['cell_types']), \
+    if isinstance(factor, str):
+        assert factor in adata.uns['cell_types'], \
             "Invalid Starfysh inference factor (cell type): ".format(factor)
+    elif isinstance(factor, list):
+        for f in factor:
+            assert f in adata.uns['cell_types'], \
+                "Invalid Starfysh inference factor (cell type): ".format(f)
+    else:
+        factor = adata.uns['cell_types']  # if None, display for all cell types
 
     adata_pl = extract_feature(adata, feature)
 
@@ -96,21 +103,21 @@ def pl_spatial_inf_feature(
             title = factor + ' (Inferred proportion - Spatial)'
         sc.pl.spatial(
             adata_pl,
-            color=factor, spot_size=s, color_map=cmap,
-            ncols=3, vmin=vmin, vmax=vmax,
-            title=title, legend_fontsize=15
+            color=factor, s=s, color_map=cmap,
+            ncols=3, vmin=vmin, vmax=vmax, alpha_img=alpha,
+            title=title, legend_fontsize=10
         )
     elif feature == 'ql_m':
         title = 'Estimated tissue density'
         sc.pl.spatial(
             adata_pl,
-            color='density', spot_size=s, color_map=cmap,
-            vmin=vmin, vmax=vmax,
-            title=title, legend_fontsize=15
+            color='density', s=s, color_map=cmap,
+            vmin=vmin, vmax=vmax, alpha_img=alpha,
+            title=title, legend_fontsize=10
         )
     elif feature == 'qz_m':
         # Visualize deconvolution on UMAP of inferred Z-space
-        qz_u = get_z_umap(adata_pl.obs.values, adata.obs.index)
+        qz_u = get_z_umap(adata_pl.obs.values)
         qc_df = extract_feature(adata, 'qc_m').obs
         if isinstance(factor, list):
             for cell_type in factor:
@@ -136,34 +143,44 @@ def pl_umap_feature(qz_u, qc, cmap, title, s=3, vmin=0, vmax=None):
     )
     axes.set_xticks([])
     axes.set_yticks([])
+    axes.set_title(title)
     axes.axis('off')
-    fig.title(title)
+
     fig.colorbar(g, label='Inferred proportions')
 
     pass
 
 
 def pl_spatial_inf_gene(
-    adata_sample,
-    map_info,
+    adata,
+    factor,
     feature,
-    idx,
-    plt_title,
-    label,
-    vmin=None,
+    vmin=0,
     vmax=None,
-    s=3,
+    s=10,
+    alpha=0,
+    cmap='Spectral_r'
 ):
-    qvar = feature
-    color_idx_list = (qvar[:,idx].astype(float))
-    all_loc = np.array(map_info.loc[:,['array_col','array_row']])
-    fig,axs= plt.subplots(1,1,figsize=(4,3),dpi=200)
-    g=axs.scatter(all_loc[:,0],-all_loc[:,1],cmap='magma',c=color_idx_list,s=s,vmin=vmin,vmax=vmax)
+    if isinstance(feature, str):
+        assert feature in set(adata.var_names), \
+            "Gene {0} isn't HVG, please choose from `adata.var_names`".format(feature)
+        title = feature + ' (Predicted expression)'
+    else:
+        for f in feature:
+            assert f in set(adata.var_names), \
+                "Gene {0} isn't HVG, please choose from `adata.var_names`".format(f)
+        title = [f + ' (Predicted expression)' for f in feature]
 
-    fig.colorbar(g,label=label)
-    plt.title(plt_title)
-    axs.set_xticks([])
-    axs.set_yticks([])
-    plt.axis('off')
+    # Assign dummy `var_names` to avoid gene name in both obs & var
+    adata_expr = extract_feature(adata, factor+'_inferred_exprs')
+    adata_expr.var_names = np.arange(adata_expr.shape[1])
+
+    sc.pl.spatial(
+        adata_expr,
+        color=feature, s=s, color_map=cmap,
+        ncols=3, vmin=vmin, vmax=vmax, alpha_img=alpha,
+        title=title,
+        legend_fontsize=10
+    )
     
     pass

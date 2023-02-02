@@ -83,8 +83,12 @@ class VisiumArguments:
                 self.params[k] = v
 
         # Update spatial information to adata if missing
-        if 'spatial' not in adata.uns_keys() and (self.img is not None and self.scalefactor is not None):
-            self._update_spatial_info(self.params['sample_id'])
+        if 'spatial' not in adata.uns_keys():
+            if self.img is None and self.scalefactor is None:  # simulation use UMAP to represent actual locations
+                self.adata.obsm['spatial'] = adata.obsm['X_umap']
+            else:
+                self._update_spatial_info(self.params['sample_id'])
+
 
         # Filter out signature genes X listed in expression matrix
         LOGGER.info('Subsetting highly variable & signature genes ...')
@@ -133,11 +137,49 @@ class VisiumArguments:
         assert self.img_patches is not None, "Please run Starfysh PoE first"
         return self.img_patches
 
-    def update_anchors(self, gene_sig_updated):
+    def append_factors(self, arche_markers):
+        """
+        Append list of archetypes (w/ corresponding markers) as additional cell type(s) / state(s) to the `gene_sig`
+        """
+        self.gene_sig = pd.concat((self.gene_sig, arche_markers), axis=1)
+
+        # Update factor names & anchor spots
+        self.adata.uns['cell_types'] = list(self.gene_sig.columns)
+        self._update_anchors()
+        return None
+
+    def replace_factors(self, factors_to_repl, arche_markers):
+        """
+        Replace factor(s) with archetypes & their corresponding markers in the `gene_sig`
+        """
+        if isinstance(factors_to_repl, str):
+            assert isinstance(arche_markers, pd.Series),\
+                "Please pick only one archetype to replace the factor {}".format(factors_to_repl)
+            factors_to_repl = [factors_to_repl]
+            archetypes = [arche_markers.name]
+        else:
+            assert len(factors_to_repl) == len(arche_markers.columns), \
+                "Unequal # cell types & archetypes to replace with"
+            archetypes = arche_markers.columns
+
+        self.gene_sig.rename(
+            columns={
+                f: a
+                for (f, a) in zip(factors_to_repl, archetypes)
+            }, inplace=True
+        )
+        self.gene_sig[archetypes] = pd.DataFrame(arche_markers)
+
+        # Update factor names & anchor spots
+        self.adata.uns['cell_types'] = list(self.gene_sig.columns)
+        self._update_anchors()
+        return None
+
+    def _update_anchors(self):
         """Re-calculate anchor spots given updated gene signatures"""
-        self.gene_sig = gene_sig_updated
         self.sig_mean = self._get_sig_mean()
         self.sig_mean_znorm = self._znorm_sig(z_axis=self.params['z_axis'])
+        self.adata.uns['cell_types'] = list(self.gene_sig.columns)
 
         LOGGER.info('Recalculating anchor spots (highly expression of specific cell-type signatures)...')
         anchor_info = get_anchor_spots(self.adata,
@@ -305,7 +347,7 @@ def run_starfysh(
         if poe:
             model = AVAE_PoE(
                 adata=adata,
-                gene_sig=gene_sig,
+                gene_sig=sig_mean_znorm,
                 patch_r=visium_args.params['patch_r'],
                 win_loglib=win_loglib
             )
@@ -314,7 +356,7 @@ def run_starfysh(
         else:
             model = AVAE(
                 adata=adata,
-                gene_sig=gene_sig,
+                gene_sig=sig_mean_znorm,
                 win_loglib=win_loglib
             )
             
@@ -643,8 +685,8 @@ def preprocess_img(
     tissue_position_list = tissue_position_list.loc[adata_index, :]
     map_info = tissue_position_list.iloc[:, 1:3]
     map_info.columns = ['array_row', 'array_col']
-    map_info.loc[:, 'imagerow'] = tissue_position_list.iloc[:, -2] * tissue_hires_scalef
-    map_info.loc[:, 'imagecol'] = tissue_position_list.iloc[:, -1] * tissue_hires_scalef
+    map_info.loc[:, 'imagerow'] = tissue_position_list.iloc[:, -2]
+    map_info.loc[:, 'imagecol'] = tissue_position_list.iloc[:, -1]
     map_info.loc[:, 'sample'] = sample_id
 
     return {
@@ -795,29 +837,6 @@ def append_sigs(gene_sig, factor, sigs, n_genes=5):
     return gene_sig_new
 
 
-def append_factors(gene_sig, markers_df):
-    """
-    Append list of archetypes as additional cell type / state (w/ their DEGs as marker genes)
-    """
-    gene_sig_new = pd.concat((gene_sig, markers_df), axis=1)
-    return gene_sig_new
-
-
-def replace_factors(gene_sig, cols, markers_df, archetypes):
-    """
-    Replace signatures of given `cols` from original annotation `gene_sig`
-    w/ archetypal DEGs in given `archetypes`
-    """
-    assert (isinstance(cols, str) and isinstance(archetypes, str)) or (len(cols) == len(archetypes)), \
-        "Unequal number of cell types to replace from archetypal markers to signatures"
-    try:
-        gene_sig[cols] = markers_df[archetypes]
-    except KeyError:
-        LOGGER.info('Invalid cell type / archetype names found, return the original signatures<br>'
-                    'please double-check `cols` or `archetypes` values exist in dataframes respectively')
-    return gene_sig
-
-
 def refine_anchors(
         visium_args,
         aa_model,
@@ -849,6 +868,7 @@ def refine_anchors(
     visimu_args : VisiumArgument
         updated parameter set for Starfysh
     """
+    # TODO: integrate into `visium_args` class
 
     gene_sig = visium_args.gene_sig.copy()
     anchors = visium_args.get_anchors()
@@ -875,7 +895,8 @@ def refine_anchors(
                 )
 
         # (2). Update anchors & re-compute anchor-archetype mapping
-        visium_args.update_anchors(gene_sig)
+        visium_args.gene_sig = gene_sig
+        visium_args._update_anchors()
         anchors = visium_args.get_anchors()
         map_df, _ = aa_model.assign_archetypes(anchors)
 
@@ -894,20 +915,13 @@ def extract_feature(adata, key):
     assert key in adata.obsm.keys(), "Unfounded Starfysh generative / inference output: {}".format(key)
 
     if key == 'qc_m':
-        cols = adata.varm['cell_type']
+        cols = adata.uns['cell_types']  # cell type deconvolution
     elif key == 'qz_m':
-        cols = ['z'+str(i) for i in range(adata.obsm[key].shape[1])]
+        cols = ['z'+str(i) for i in range(adata.obsm[key].shape[1])]  # inferred qz (low-dim manifold)
+    elif '_inferred_exprs' in key:
+        cols = adata.var_names  # inferred cell-type specific expressions
     else:
-        cols = 'density'
-
-    adata_dummy = sc.AnnData(
-        adata.X.A if isinstance(adata.X, csr_matrix) else adata.X,
-        adata.obs.index.to_frame(),
-        adata.var.index.to_frame()
-    )
-    adata_dummy.obs = pd.concat([
-        adata_dummy.obs,
-        pd.DataFrame(adata.obsm[key], index=adata.obs.index, columns=cols)
-    ], axis=1)
-
+        cols = ['density']
+    adata_dummy = adata.copy()
+    adata_dummy.obs = pd.DataFrame(adata.obsm[key], index=adata.obs.index, columns=cols)
     return adata_dummy

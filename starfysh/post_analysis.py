@@ -12,15 +12,9 @@ from scipy.stats import pearsonr, gaussian_kde
 
 
 
-def get_z_umap(qz_m, index):
-    # TODO: double check whether plot from `qz_m_ct` or `qz_m`
-    # qz_m_ct = inference_outputs["qz_m_ct"].detach().cpu().numpy()
+def get_z_umap(qz_m):
     fit = umap.UMAP(n_neighbors=45, min_dist=0.5)
-
-    # u = fit.fit_transform(qz_m_ct.reshape([qz_m_ct.shape[0],-1]))
     u = fit.fit_transform(qz_m)
-    u = pd.DataFrame(u,columns=['umap1','umap2'])
-    u.index = index
     return u
 
 
@@ -54,33 +48,7 @@ def get_corr_map(inference_outputs,proportions):
     plt.xlabel('Estimated proportion')
     plt.ylabel('Ground truth proportion')
 
-    
-def pl_spatial_inf_feature(
-    adata_sample,
-    map_info,
-    inference_outputs,
-    feature,
-    idx,
-    plt_title,
-    label,
-    vmin=None,
-    vmax=None,
-    s=3,
-):
-    qvar = inference_outputs[feature].detach().cpu().numpy()
-    color_idx_list = (qvar[:,idx].astype(float))
-    all_loc = np.array(map_info.loc[:,['array_col','array_row']])
-    fig,axs= plt.subplots(1,1,figsize=(4,3),dpi=200)
-    g=axs.scatter(all_loc[:,0],-all_loc[:,1],cmap='magma',c=color_idx_list,s=s,vmin=vmin,vmax=vmax)
 
-    #plt.legend(color_unique_idx,title='disc_gsva',loc='right',bbox_to_anchor=(1.3, 0.5))
-    fig.colorbar(g,label=label)
-    plt.title(plt_title)
-    axs.set_xticks([])
-    axs.set_yticks([])
-    plt.axis('off')
-    
-    pass
 
 def display_reconst(
     df_true,
@@ -280,7 +248,7 @@ def get_factor_dist(sample_ids,file_path):
     return qc_p_dist
 
 
-def get_adata(sample_ids,data_folder):
+def get_adata(sample_ids, data_folder):
     adata_sample_all = []
     map_info_all = []
     adata_image_all = []

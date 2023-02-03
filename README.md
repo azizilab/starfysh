@@ -2,32 +2,26 @@
 
 ## Starfysh: Spatial Transcriptomic Analysis using Reference-Free auxiliarY deep generative modeling and Shared Histology
 
-Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Transcriptomic (ST) datasets. In summary, the Starfysh framework enables reference-free deconvolution of cell types and cell states and can be improved with the integration of paired histology images of tissues, if available. To facilitate the comparison of tissues between healthy and diseased contexts and the derivation of differential spatial patterns, Starfysh is capable of integrating data from multiple tissues. In particular, Starfysh identifies common or sample-specific spatial “hubs”, defined as neighborhoods with a unique composition of cell types. To uncover mechanisms underlying local and long-range communication, Starfysh can be used to perform downstream analysis on the spatial organization of hubs. This analysis includes the identification of critical genes with spatially varying patterns as well as cell-cell interaction networks.
+Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Transcriptomic (ST) datasets. In summary, the Starfysh framework enables reference-free deconvolution of cell types and cell states and can be improved with the integration of paired histology images of tissues, if available. Starfysh is capable of integrating data from multiple tissues. In particular, Starfysh identifies common or sample-specific spatial “hubs” with unique composition of cell types. To uncover mechanisms underlying local and long-range communication, Starfysh can be used to perform downstream analysis on the spatial organization of hubs.
 
 <img src=figure/github_figure_1.png width="1000" />
 
 <img src=figure/github_figure_2.png width="1000" />
 
-## Quickstart of our tutorials on colab
+## Quickstart of our tutorials on Google Colab
   - [1. Basic deconvolution on an example breast cancer data (dataset & signature files included).](https://colab.research.google.com/drive/152y-RpmRTEUJ16c_kF3KRwSRjm_THupv?authuser=1) 
-  
   - [2. Deconvolution and integration of multiple datasets.]
-  
+  - [3. Histology integration & multi-sample integration]
+
+Please refer to [Starfysh Documentation](http://starfysh.readthedocs.io) for additional tutorials & APIs
+
 ## Update
 
+- V 1.1.0
+  - Simplified visualizations of deconvolution & gene expression predictions
 - V 1.0.0
+  - [Example dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link) & [Zenodo V 1.0.0](https://doi.org/10.5281/zenodo.7342798)
 
-  - [Documentation of Starfysh](http://starfysh.readthedocs.io) 
-  
-  - [Example dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link)
-
-  - Additional tutorial (coming soon!):
-
-    - Histology integration
-    - Downstream analysis & multi-sample integraion
-
-  - [bioRxiv preprint](https://www.biorxiv.org/content/10.1101/2022.11.21.517420v1)
-  - [Zenodo V 1.0.0](https://doi.org/10.5281/zenodo.7342798)
 
 ## Installation
 
@@ -39,9 +33,6 @@ python setup.py install --user
 ## Models & I/O:
 
 - Semi-supervised learning with Auxiliary Variational Autoencoder (AVAE) for cell-type deconvolution
-- Archetypal analysis for unsupervised cell-type discovery (novel cell types) & marker gene refinement (existing annotated cell types)
-- Product-of-Experts (PoE) for H&E image integration
-
 - Input:
 
   - Spatial Transcriptomics count matrix
@@ -74,85 +65,6 @@ python setup.py install --user
 ├── notebooks:      Sample notebook & tutorial
 ├── simulation:     Synthetic simulation from scRNA-seq for benchmark
 ├── starfysh:       Starfysh core model
-```
-
-## Quickstart
-
-```python
-import numpy as np
-import pandas as pd
-import torch
-from starfysh import (
-    AA,
-    dataloader,
-    starfysh,
-    utils,
-    plot_utils,
-    post_analysis
-)
-
-# (1) Loading dataset & signature gene sets
-data_path = 'data/' # specify data directory
-sig_path = 'data/bc_signatures_version_1013.csv' # specify signature directory
-sample_id = 'CID44971_TNBC'
-
-# --- (a) ST matrix ---
-adata, adata_norm = utils.load_adata(
-    data_path,
-    sample_id,
-    n_genes=2000
-)
-
-# --- (b) paired H&E image + spots info ---
-img, map_info = utils.preprocess_img(
-    data_path,
-    sample_id,
-    adata_index=adata.obs.index,
-    hchannal=False
-)
-
-# --- (c) signature gene sets ---
-gene_sig = utils.filter_gene_sig(
-    pd.read_csv(sig_path),
-    adata.to_df()
-)
-
-# (2) Starfysh deconvolution
-
-# --- (a) Preparing arguments for model training
-args = utils.VisiumArguments(
-    adata,
-    adata_norm,
-    gene_sig,
-    map_info
-)
-
-adata, adata_norm = args.get_adata()
-
-# --- (b) Model training ---
-n_restarts = 3
-epochs = 100
-patience = 10
-device = torch.device('cpu')
-
-model, loss = utils.run_starfysh(
-    args,
-    n_restarts,
-    epochs=epochs,
-    patience=patience
-)
-
-# (3). Parse deconvolution outputs
-inferences, generatives, px = starfysh.model_eval(
-    model,
-    adata,
-    args.sig_mean,
-    device,
-    args.log_lib,
-)
-
-# Deconvolution results
-deconv_prop = inferences['qc_m'].detach().cpu().numpy()
 ```
 
 ## How to cite Starfysh

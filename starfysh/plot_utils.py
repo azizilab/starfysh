@@ -79,7 +79,7 @@ def pl_spatial_inf_feature(
     factor=None,
     vmin=0,
     vmax=None,
-    s=10,
+    spot_size=100,
     alpha=0,
     cmap='Spectral_r'
 ):
@@ -103,17 +103,17 @@ def pl_spatial_inf_feature(
             title = factor + ' (Inferred proportion - Spatial)'
         sc.pl.spatial(
             adata_pl,
-            color=factor, s=s, color_map=cmap,
+            color=factor, spot_size=spot_size, color_map=cmap,
             ncols=3, vmin=vmin, vmax=vmax, alpha_img=alpha,
-            title=title, legend_fontsize=10
+            title=title, legend_fontsize=8
         )
     elif feature == 'ql_m':
         title = 'Estimated tissue density'
         sc.pl.spatial(
             adata_pl,
-            color='density', s=s, color_map=cmap,
+            color='density', spot_size=spot_size, color_map=cmap,
             vmin=vmin, vmax=vmax, alpha_img=alpha,
-            title=title, legend_fontsize=10
+            title=title, legend_fontsize=8
         )
     elif feature == 'qz_m':
         # Visualize deconvolution on UMAP of inferred Z-space
@@ -123,23 +123,23 @@ def pl_spatial_inf_feature(
             for cell_type in factor:
                 title = cell_type + ' (Inferred proportion - UMAP of Z)'
                 pl_umap_feature(qz_u, qc_df[cell_type].values, cmap, title,
-                                s=s, vmin=vmin, vmax=vmax)
+                                vmin=vmin, vmax=vmax)
         else:
             title = factor + ' (Inferred proportion - UMAP of Z)'
             pl_umap_feature(qz_u, qc_df[factor].values, cmap, title,
-                            s=s, vmin=vmin, vmax=vmax)
+                            vmin=vmin, vmax=vmax)
     else:
         raise ValueError('Invalid Starfysh inference results `{}`, please choose from `qc_m`, `qz_m` & `ql_m`'.format(feature))
 
     pass
 
 
-def pl_umap_feature(qz_u, qc, cmap, title, s=3, vmin=0, vmax=None):
+def pl_umap_feature(qz_u, qc, cmap, title, spot_size=3, vmin=0, vmax=None):
     """Single Z-UMAP visualization of Starfysh deconvolutions"""
     fig, axes = plt.subplots(1, 1, figsize=(4, 3), dpi=200)
     g = axes.scatter(
         qz_u[:, 0], qz_u[:, 1],
-        cmap=cmap, c=qc, s=s, vmin=vmin, vmax=vmax,
+        cmap=cmap, c=qc, s=spot_size, vmin=vmin, vmax=vmax,
     )
     axes.set_xticks([])
     axes.set_yticks([])
@@ -157,7 +157,7 @@ def pl_spatial_inf_gene(
     feature,
     vmin=0,
     vmax=None,
-    s=10,
+    spot_size=100,
     alpha=0,
     cmap='Spectral_r'
 ):
@@ -177,10 +177,10 @@ def pl_spatial_inf_gene(
 
     sc.pl.spatial(
         adata_expr,
-        color=feature, s=s, color_map=cmap,
+        color=feature, spot_size=spot_size, color_map=cmap,
         ncols=3, vmin=vmin, vmax=vmax, alpha_img=alpha,
         title=title,
-        legend_fontsize=10
+        legend_fontsize=8
     )
     
     pass

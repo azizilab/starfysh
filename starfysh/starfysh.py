@@ -7,15 +7,15 @@ import random
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 import torch
-import torch.optim as optim
 import torch.nn as nn
 
-from skimage import io
 from torchvision import transforms
-from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 from torch.distributions import Distribution, Normal, LogNormal, Gamma, Poisson, Dirichlet
 from torch.distributions import kl_divergence as kl
+
+# Module import
+from starfysh import LOGGER
 
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
@@ -143,7 +143,8 @@ class AVAE(nn.Module):
         qc_m =  self.c_enc_m(hidden)
 
         # TODO: solve the Dirichlet sampling issue (constraint: >= 0)
-        qc = Dirichlet(self.alpha * qc_m).rsample()[:,:,None]
+        eps = 1e-10  # avoid Dirichlet concentration params == 0
+        qc = Dirichlet(self.alpha * qc_m + eps).rsample()[:,:,None]
         hidden = self.z_enc(x_n)
         qz_m_ct = self.z_enc_m(hidden).reshape([x_n.shape[0],self.c_kn,self.c_bn])
         qz_m_ct = (qc * qz_m_ct)
@@ -417,9 +418,7 @@ class AVAE_PoE(nn.Module):
         sample = mu + (eps * std)  # sampling
         return sample
 
-    def inference(self,
-                  x,
-                  ):
+    def inference(self, x):
         # library = torch.log(x.sum(1)).unsqueeze(1)
         # l is inferred from logrithmized x
         x1 = torch.log(1 + x)
@@ -434,7 +433,8 @@ class AVAE_PoE(nn.Module):
         qc_m = self.c_enc_m(hidden)
 
         # TODO: solve the Dirichlet sampling issue (constraint: >= 0)
-        qc = Dirichlet(self.alpha * qc_m).rsample()[:, :, None]
+        eps = 1e-10  # avoid Dirichlet concentration params == 0
+        qc = Dirichlet(self.alpha * qc_m + eps).rsample()[:, :, None]
 
         hidden = self.z_enc(x_n)
         qz_m_ct = self.z_enc_m(hidden).reshape([x1.shape[0], self.c_kn, self.c_bn])
@@ -472,7 +472,8 @@ class AVAE_PoE(nn.Module):
         img_qc_m = self.img_c_enc_m(hidden)
 
         # TODO: resolve the Dirichlet sampling issue (constraint: >= 0)
-        img_qc = Dirichlet(self.alpha * img_qc_m).rsample()[:, :, None]
+        eps = 1e-10  # avoid Dirichlet concentration params == 0
+        img_qc = Dirichlet(self.alpha * img_qc_m + eps).rsample()[:, :, None]
 
         hidden = self.imgVAE_z_enc(x)
         img_qz_m_ct = self.imgVAE_mu(hidden).reshape([x.shape[0], self.c_kn, self.c_bn])
@@ -678,6 +679,12 @@ class AVAE_PoE(nn.Module):
             kl_divergence_c_img = torch.Tensor([0.0])
 
         bce_loss_img = criterion(recon_img, adata_img)
+
+        bce_loss_img = bce_loss_img.to(device)
+        kl_divergence_z_img = kl_divergence_z_img.to(device)
+        kl_divergence_n_img = kl_divergence_n_img.to(device)
+        kl_divergence_c_img = kl_divergence_c_img.to(device)
+        
         loss_img = torch.sum(bce_loss_img + kl_divergence_z_img + kl_divergence_n_img + kl_divergence_c_img)
 
         Loss_IBM = (loss_exp + loss_img)
@@ -883,7 +890,7 @@ class NegBinom(Distribution):
     x ~ Poisson(lambda)
     """
 
-    def __init__(self, mu, theta, eps=1e-5):
+    def __init__(self, mu, theta, eps=1e-10):
         """
         Parameters
         ----------
@@ -905,7 +912,7 @@ class NegBinom(Distribution):
 
     def sample(self):
         lambdas = Gamma(
-            concentration=self.theta,
+            concentration=self.theta+self.eps,
             rate=(self.theta+self.eps) / (self.mu+self.eps),
         ).rsample()
 
@@ -931,6 +938,9 @@ def model_eval(
     poe=False,
     device=torch.device('cpu')
 ):
+    # TODO: solve NegBinom learnt params (inf. `px_rate` & negative `px_r`) in PoE --> unable to sample `px`
+    # For now, only store `px` with non-PoE case
+
     model.eval()
     x_in = torch.Tensor(adata.to_df().values).to(device)
     sig_means = torch.Tensor(visium_args.sig_mean_znorm.values).to(device)
@@ -943,10 +953,14 @@ def model_eval(
     else:
         generative_outputs = model.generative(inference_outputs, sig_means)
 
-    px = NegBinom(
-        mu=generative_outputs["px_rate"],
-        theta=torch.exp(generative_outputs["px_r"])
-    ).sample().detach().cpu().numpy()
+    try:
+        px = NegBinom(
+            mu=generative_outputs["px_rate"],
+            theta=torch.exp(generative_outputs["px_r"])
+        ).sample().detach().cpu().numpy()
+        adata.obsm['px'] = px
+    except ValueError as ve:
+        LOGGER.warning('Invalid Gamma distribution parameters `px_rate` or `px_r`, unable to sample inferred p(x | z)')
 
     # Save inference & generative outputs in adata
     for rv in inference_outputs.keys():
@@ -964,9 +978,7 @@ def model_eval(
         except:
             print("rv: {} can't be stored".format(rv))
 
-    adata.obsm['px'] = px
-
-    return inference_outputs, generative_outputs, px
+    return inference_outputs, generative_outputs
 
 
 def model_ct_exp(
@@ -988,8 +1000,10 @@ def model_ct_exp(
         inference_outputs['qz'] = inference_outputs['qz_m_ct'][:, ct_idx, :]
         generative_outputs = model.generative(inference_outputs, sig_mean)
 
-        # Sample predicted expressions from learnt distribution parameters
-        px = NegBinom(generative_outputs["px_rate"], torch.exp(generative_outputs["px_r"])).sample()
+        px = NegBinom(
+            mu=generative_outputs["px_rate"],
+            theta=torch.exp(generative_outputs["px_r"])
+        ).sample()
         px = px.detach().cpu().numpy()
 
         # Save results in adata.obsm

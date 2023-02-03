@@ -8,7 +8,7 @@ py_pcha
 scanpy
 scikit-image
 scikit-dimension
-sklearn
+scikit-learn
 sphinx
 sphinxcontrib-apidoc
 torch

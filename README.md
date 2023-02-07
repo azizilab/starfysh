@@ -36,7 +36,7 @@ python setup.py install --user
 - Input:
 
   - Spatial Transcriptomics count matrix
-  - Annotated signature gene sets (see [example](https://drive.google.com/file/d/1yAfAj7PaFJZph88MwhWNXL5Kx5dKMngZ/view?usp=share_link))
+  - Annotated signature gene sets (see [example](https://drive.google.com/file/d/1AXWQy_mwzFEKNjAdrJjXuegB3onxJoOM/view?usp=share_link))
   - (Optional): paired H&E image
 
 - Output:

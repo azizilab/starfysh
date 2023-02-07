@@ -92,8 +92,7 @@ class VisiumArguments:
 
         # Filter out signature genes X listed in expression matrix
         LOGGER.info('Subsetting highly variable & signature genes ...')
-        self.adata = get_adata_wsig(adata, gene_sig)
-        self.adata_norm = get_adata_wsig(adata_norm, gene_sig)
+        self.adata, self.adata_norm = get_adata_wsig(adata, adata_norm, gene_sig)
 
         # Get smoothed library size
         LOGGER.info('Smoothing library size by taking averaging with neighbor spots...')
@@ -563,13 +562,14 @@ def load_adata(data_folder, sample_id, n_genes, multiple_data=False):
         adata = sc.read_h5ad(os.path.join(data_folder, sample_id, filenames[0] + '.h5ad'))
         adata.var_names_make_unique()
         adata.obs['sample'] = sample_id
+
+    if '_index' in adata.var.columns:
+        adata.var_names = adata.var['_index']
+
     adata_norm = preprocess(adata, n_top_genes=n_genes,multiple_data=multiple_data)
     adata = adata[:, list(adata_norm.var_names)]
     adata.var['highly_variable'] = adata_norm.var['highly_variable']
     adata.obs = adata_norm.obs
-
-    if '_index' in adata.var.columns:
-        adata.var_names = adata.var['_index']
 
     return adata, adata_norm
 
@@ -696,7 +696,7 @@ def preprocess_img(
     }
 
 
-def get_adata_wsig(adata, gene_sig):
+def get_adata_wsig(adata, adata_norm, gene_sig):
     """
     Select intersection of HVGs from dataset & signature annotations
     """
@@ -710,7 +710,7 @@ def get_adata_wsig(adata, gene_sig):
         np.union1d(adata.var_names[adata.var.highly_variable], unique_sigs),
         adata.var_names
     )
-    return adata[:, genes_to_keep]
+    return adata[:, genes_to_keep], adata_norm[:, genes_to_keep]
 
 
 def filter_gene_sig(gene_sig, adata_df):

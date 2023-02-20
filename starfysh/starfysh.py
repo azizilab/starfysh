@@ -53,7 +53,7 @@ class AVAE(nn.Module):
         win_loglib : float
             Log-library size smoothed with neighboring spots
         """
-        super(AVAE, self).__init__()
+        super().__init__()
         self.win_loglib=torch.Tensor(win_loglib)
         
         self.c_in = adata.shape[1] # c_in : Num. input features (# input genes)
@@ -62,6 +62,10 @@ class AVAE(nn.Module):
         self.c_kn = gene_sig.shape[1]
         
         self.alpha = torch.nn.Parameter(torch.rand(self.c_kn)*1e3,requires_grad=True)
+
+        self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
+        self.qu_m = torch.nn.Parameter(torch.randn(self.c_kn, self.c_bn), requires_grad=True)
+        self.qu_logv = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
 
         
         self.c_enc = nn.Sequential(
@@ -156,6 +160,10 @@ class AVAE(nn.Module):
         qz_logv = qz_logv_ct.sum(axis=1)
         qz = self.reparameterize(qz_m, qz_logv)
 
+        qu_m = self.qu_m
+        qu_logv = self.qu_logv
+        qu = self.reparameterize(qu_m, qu_logv)
+
         return dict(
                     qc_m = qc_m,
                     qc=qc,
@@ -166,7 +174,10 @@ class AVAE(nn.Module):
                     qz=qz,
                     ql_m=ql_m,
                     ql_logv = ql_logv,
-                    ql=ql
+                    ql=ql,
+                    qu_m=qu_m,
+                    qu_logv=qu_logv,
+                    qu=qu,
                    )
     
     def generative(
@@ -204,7 +215,13 @@ class AVAE(nn.Module):
         device
     ):
     
+        qc = inference_outputs["qc"]
         qc_m = inference_outputs["qc_m"]
+
+        qs_logm = self.qs_logm
+        qu = inference_outputs["qu"]
+        qu_m = inference_outputs["qu_m"]
+        qu_logv = inference_outputs["qu_logv"]
 
         qz_m = inference_outputs["qz_m"]
         qz_logv = inference_outputs["qz_logv"]
@@ -217,10 +234,16 @@ class AVAE(nn.Module):
         px_r = generative_outputs["px_r"]
         pc_p = generative_outputs["pc_p"]
 
-        mean = torch.zeros_like(qz_m)
-        scale = torch.ones_like(qz_logv)
-        
-        kl_divergence_z = kl(Normal(qz_m, torch.sqrt(torch.exp(qz_logv))), Normal(mean, scale)).sum(
+        kl_divergence_u = kl(
+            Normal(qu_m, torch.exp(qu_logv / 2)),
+            Normal(torch.zeros_like(qu_m), torch.ones_like(qu_m))
+        ).sum(
+            dim=1
+        ).mean()
+
+        mean_pz = (qu.unsqueeze(0) * qc).sum(axis=1)
+        std_pz = (torch.exp(qs_logm / 2).unsqueeze(0) * qc).sum(axis=1)
+        kl_divergence_z = kl(Normal(qz_m, torch.exp(qz_logv / 2)), Normal(mean_pz, std_pz)).sum(
             dim=1
         ).mean()
      
@@ -243,6 +266,7 @@ class AVAE(nn.Module):
         reconst_loss = -NegBinom(px_rate, torch.exp(px_r)).log_prob(x).sum(-1).mean()
         
         reconst_loss = reconst_loss.to(device)
+        kl_divergence_u = kl_divergence_u.to(device)
         kl_divergence_z = kl_divergence_z.to(device)
         kl_divergence_c = kl_divergence_c.to(device)
         kl_divergence_n = kl_divergence_n.to(device)
@@ -250,6 +274,7 @@ class AVAE(nn.Module):
 
         return (loss,
                 reconst_loss,
+                kl_divergence_u,
                 kl_divergence_z,
                 kl_divergence_c,
                 kl_divergence_n
@@ -684,7 +709,7 @@ class AVAE_PoE(nn.Module):
         kl_divergence_z_img = kl_divergence_z_img.to(device)
         kl_divergence_n_img = kl_divergence_n_img.to(device)
         kl_divergence_c_img = kl_divergence_c_img.to(device)
-        
+
         loss_img = torch.sum(bce_loss_img + kl_divergence_z_img + kl_divergence_n_img + kl_divergence_c_img)
 
         Loss_IBM = (loss_exp + loss_img)
@@ -743,6 +768,7 @@ def train(
     model.train()
     
     running_loss = 0.0
+    running_u = 0.0
     running_z = 0.0
     running_c = 0.0
     running_n = 0.0
@@ -763,6 +789,7 @@ def train(
 
         (loss,
          reconst_loss,
+         kl_divergence_u,
          kl_divergence_z,
          kl_divergence_c,
          kl_divergence_n
@@ -779,6 +806,7 @@ def train(
         
         running_loss += loss.item()
         running_reconst +=reconst_loss.item()
+        running_u +=kl_divergence_u.item()
         running_z +=kl_divergence_z.item()
         running_c +=kl_divergence_c.item()
         running_n +=kl_divergence_n.item()    
@@ -787,11 +815,12 @@ def train(
 
     train_loss = running_loss / counter
     train_reconst = running_reconst / counter
+    train_u = running_u / counter
     train_z = running_z / counter
     train_c = running_c / counter
     train_n = running_n / counter
 
-    return train_loss, train_reconst, train_z, train_c, train_n, corr_list
+    return train_loss, train_reconst, train_u, train_z, train_c, train_n, corr_list
 
 
 def train_poe(
@@ -965,7 +994,10 @@ def model_eval(
     # Save inference & generative outputs in adata
     for rv in inference_outputs.keys():
         val = inference_outputs[rv].detach().cpu().numpy().squeeze()
-        adata.obsm[rv] = val
+        if "qu" not in rv and "qs" not in rv:
+            adata.obsm[rv] = val
+        else:
+            adata.uns[rv] = val
 
     for rv in generative_outputs.keys():
         try:

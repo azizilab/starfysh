@@ -364,6 +364,7 @@ def run_starfysh(
         loss_dict = {
             'reconst': [],
             'c': [],
+            'u': [],
             'z': [],
             'n': [],
             'tot': []
@@ -384,7 +385,7 @@ def run_starfysh(
 
             result = train_func(model, trainloader, device, optimizer)
             torch.cuda.empty_cache()
-            loss_tot, loss_reconst, loss_z, loss_c, loss_n, corr_list = result
+            loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n, corr_list = result
 
             if loss_c < best_loss_c:
                 patience = max_patience
@@ -397,14 +398,15 @@ def run_starfysh(
 
             loss_dict['tot'].append(loss_tot)
             loss_dict['reconst'].append(loss_reconst)
+            loss_dict['u'].append(loss_u)
             loss_dict['z'].append(loss_z)
             loss_dict['c'].append(loss_c)
             loss_dict['n'].append(loss_n)
 
             if (epoch + 1) % 10 == 0 or patience == 0:
                 if verbose:
-                    LOGGER.info("Epoch[{}/{}], train_loss: {:.4f}, train_reconst: {:.4f}, train_z: {:.4f},train_c: {:.4f},train_n: {:.4f}".format(
-                        epoch + 1, epochs, loss_tot, loss_reconst, loss_z, loss_c, loss_n)
+                    LOGGER.info("Epoch[{}/{}], train_loss: {:.4f}, train_reconst: {:.4f}, train_u: {:.4f},train_z: {:.4f},train_c: {:.4f},train_n: {:.4f}".format(
+                        epoch + 1, epochs, loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n)
                     )
 
         losses.append(loss_dict)

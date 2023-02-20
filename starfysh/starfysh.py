@@ -178,6 +178,7 @@ class AVAE(nn.Module):
                     qu_m=qu_m,
                     qu_logv=qu_logv,
                     qu=qu,
+                    qs_logm=self.qs_logm,
                    )
     
     def generative(

@@ -82,6 +82,9 @@ class VisiumArguments:
             if k in self.params.keys():
                 self.params[k] = v
 
+        # Store cell types
+        self.adata.uns['cell_types'] = list(self.gene_sig.columns)
+
         # Update spatial information to adata if missing
         if 'spatial' not in adata.uns_keys():
             if self.img is None and self.scalefactor is None:  # simulation use UMAP to represent actual locations

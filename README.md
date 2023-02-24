@@ -1,4 +1,4 @@
-<img src=figure/logo.png width="400" />
+<img src=figure/logo.png width="600" />
 
 [![Documentation Status](https://readthedocs.org/projects/cellpose/badge/?version=latest)](https://readthedocs.org/projects/starfysh/badge/?version=latest)
 [![Licence: GPL v3](https://img.shields.io/github/license/azizilab/starfysh)](https://github.com/azizilab/starfysh/blob/master/LICENSE)

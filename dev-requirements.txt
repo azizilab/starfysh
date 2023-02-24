@@ -1,0 +1,5 @@
+ipykernel>=6.17.0
+nbsphinx>=0.8.9
+sphinx>=4.2.0
+sphinxcontrib-apidoc>=4.2.0
+

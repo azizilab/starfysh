@@ -123,6 +123,8 @@ class VisiumArguments:
         self.pure_spots, self.pure_dict, self.pure_idx = anchor_info
         self.alpha_min = get_alpha_min(self.sig_mean, self.pure_dict)  # Calculate alpha mean
 
+        del self.adata.raw, self.adata_norm.raw 
+
     def get_adata(self):
         """Return adata after preprocessing & HVG gene selection"""
         return self.adata, self.adata_norm
@@ -379,6 +381,9 @@ def run_starfysh(
         model.apply(init_weights)
         optimizer = optim.Adam(model.parameters(), lr=lr)
 
+        # TODO: test scheduler vs. early stopping
+        # scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
+        
         for epoch in range(epochs):
             if patience == 0:
                 loss_c_list[i] = best_loss_c
@@ -388,6 +393,8 @@ def run_starfysh(
 
             result = train_func(model, trainloader, device, optimizer)
             torch.cuda.empty_cache()
+
+
             loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n, corr_list = result
 
             if loss_c < best_loss_c:
@@ -411,6 +418,8 @@ def run_starfysh(
                     LOGGER.info("Epoch[{}/{}], train_loss: {:.4f}, train_reconst: {:.4f}, train_u: {:.4f},train_z: {:.4f},train_c: {:.4f},train_n: {:.4f}".format(
                         epoch + 1, epochs, loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n)
                     )
+
+            # scheduler.step()
 
         losses.append(loss_dict)
 
@@ -570,6 +579,8 @@ def load_adata(data_folder, sample_id, n_genes, multiple_data=False):
 
     if '_index' in adata.var.columns:
         adata.var_names = adata.var['_index']
+        adata.var_names.name = 'Genes'
+        adata.var.drop('_index', axis=1, inplace=True)
 
     adata_norm = preprocess(adata, n_top_genes=n_genes,multiple_data=multiple_data)
     adata = adata[:, list(adata_norm.var_names)]

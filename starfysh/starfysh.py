@@ -24,6 +24,9 @@ torch.manual_seed(0)
 np.random.seed(0)
 
 
+# TODO: inherit `AVAE` (expr model) w/ `AVAE_PoE` (expr + histology model), update latest PoE model
+
+
 class AVAE(nn.Module):
     """ 
     Model design
@@ -830,6 +833,8 @@ def train_poe(
     device,
     optimizer,
 ):
+    # TODO: add `u` in PoE integration 
+    
     model.train()
 
     running_loss = 0.0
@@ -903,11 +908,12 @@ def train_poe(
 
     train_loss = running_loss / counter
     train_reconst = running_reconst / counter
+    train_u = 0  # TMP, to be deleted after updating PoE model with u->c->z->x
     train_z = running_z / counter
     train_c = running_c / counter
     train_n = running_n / counter
 
-    return train_loss, train_reconst, train_z, train_c, train_n, corr_list
+    return train_loss, train_reconst, train_u, train_z, train_c, train_n, corr_list
 
 
 # Reference:
@@ -972,6 +978,8 @@ def model_eval(
     # For now, only store `px` with non-PoE case
 
     model.eval()
+    model = model.to(device)
+
     x_in = torch.Tensor(adata.to_df().values).to(device)
     sig_means = torch.Tensor(visium_args.sig_mean_znorm.values).to(device)
 
@@ -1018,20 +1026,36 @@ def model_ct_exp(
     model,
     adata,
     visium_args,
+    poe=False,
     device=torch.device('cpu')
 ):
     """
     Obtain predicted cell-type specific expression in each spot
     """
+    model.eval()
+    model = model.to(device)
     pred_exprs = {}
+    
     for ct_idx, cell_type in enumerate(adata.uns['cell_types']):
         model.eval()
 
         x_in = torch.Tensor(adata.to_df().values).to(device)
-        sig_mean = torch.Tensor(visium_args.sig_mean_znorm.values).to(device)
+        sig_means = torch.Tensor(visium_args.sig_mean_znorm.values).to(device)
+
+        # Get inference outputs
         inference_outputs = model.inference(x_in)
         inference_outputs['qz'] = inference_outputs['qz_m_ct'][:, ct_idx, :]
-        generative_outputs = model.generative(inference_outputs, sig_mean)
+
+        # Get generative outputs
+        if poe:
+            img_outputs = model.predict_imgVAE(
+                torch.Tensor(
+                    visium_args.get_img_patches()
+                ).float().to(device)
+            )
+            generative_outputs = model.generative(inference_outputs, sig_means, img_outputs)
+        else:
+            generative_outputs = model.generative(inference_outputs, sig_means)
 
         px = NegBinom(
             mu=generative_outputs["px_rate"],

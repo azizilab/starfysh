@@ -14,10 +14,12 @@ nb_requirements = [
 
 setup(
     name="Starfysh",
-    version="1.0.0",
+    version="1.1.0",
     description="Spatial Transcriptomic Analysis using Reference-Free auxiliarY deep generative modeling and Shared Histology",
-    authors=[],
+    authors=["Siyu He", "Yinuo Jin", "Achille Nazaret"],
+    url="https://starfysh.readthedocs.io",
     packages=find_packages(),
+    python_requires='>=3.7',
     install_requires=requirements,
     # package_data = ""; include_package_data=True
     zip_safe=False,
@@ -26,6 +28,9 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operation System :: OS Independent",
     ],
-    extras_require={'notebooks': nb_requirements}
+    extras_require={
+        'notebooks': nb_requirements,
+        'dev': open('dev-requirements.txt').read().splitlines(),
+    }
 )
 

@@ -2,7 +2,7 @@
 
 [![Documentation Status](https://readthedocs.org/projects/cellpose/badge/?version=latest)](https://readthedocs.org/projects/starfysh/badge/?version=latest)
 [![Licence: GPL v3](https://img.shields.io/github/license/azizilab/starfysh)](https://github.com/azizilab/starfysh/blob/master/LICENSE)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/BayraktarLab/cell2location/blob/master/docs/notebooks/cell2location_tutorial.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/152y-RpmRTEUJ16c_kF3KRwSRjm_THupv?authuser=1)
 
 ## Starfysh: Spatial Transcriptomic Analysis using Reference-Free auxiliarY deep generative modeling and Shared Histology
 

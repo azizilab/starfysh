@@ -394,7 +394,6 @@ def run_starfysh(
             result = train_func(model, trainloader, device, optimizer)
             torch.cuda.empty_cache()
 
-
             loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n, corr_list = result
 
             if loss_c < best_loss_c:

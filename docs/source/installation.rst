@@ -1,36 +1,26 @@
 Installation
 ************
-Currently we support local installation from Starfysh root directory:
-
 .. code-block:: bash
 
-    # install
-    python setup.py install --user
-
-    # uninstall
-    pip uninstall starfysh
+    pip install Starfysh
 
 Quickstart
 **********
 
 .. code-block:: python
 
+    import os
     import numpy as np
     import pandas as pd
     import torch
-    from starfysh import (
-        AA,
-        dataloader,
-        starfysh,
-        utils,
-        plot_utils,
-        post_analysis
-    )
+
+    from starfysh import (AA, utils, plot_utils, post_analysis)
+    from starfysh import starfysh as sf_model
 
     # (1) Loading dataset & signature gene sets
     data_path = 'data/' # specify data directory
     sig_path = 'signature/signatures.csv' # specify signature directory
-    sample_id = 'CID44971_TNBC'
+    sample_id = 'SAMPLE_ID'
 
     # --- (a) ST matrix ---
     adata, adata_norm = utils.load_adata(
@@ -40,11 +30,11 @@ Quickstart
     )
 
     # --- (b) paired H&E image + spots info ---
-    hist_img, map_info = utils.preprocess_img(
+    img_metadata = utils.preprocess_img(
         data_path,
         sample_id,
-        adata.obs.index,
-        hchannal=False
+        adata_index=adata.obs.index,
+        hchannel=False
     )
 
     # --- (c) signature gene sets ---
@@ -56,36 +46,39 @@ Quickstart
     # (2) Starfysh deconvolution
 
     # --- (a) Preparing arguments for model training
-    args = utils.VisiumArguments(
-        adata,
-        adata_norm,
-        gene_sig,
-        map_info,
-        n_anchors=60, # number of anchor spots per cell-type
-        window_size=5  # library size smoothing radius
-    )
+    args = utils.VisiumArguments(adata,
+                                 adata_normed,
+                                 gene_sig,
+                                 img_metadata,
+                                 n_anchors=60,
+                                 window_size=3,
+                                 sample_id=sample_id
+                                 )
 
-    adata, adata_noprm = args.get_adata()
+    adata, adata_normed = args.get_adata()
+    anchors_df = args.get_anchors()
 
     # --- (b) Model training ---
     n_restarts = 3
-    epochs = 100
-    patience = 10
-    device = torch.device('cpu')
+    epochs = 200
+    patience = 50
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    # Run models
     model, loss = utils.run_starfysh(
-        args,
-        n_restarts,
+        visium_args,
+        n_repeats=n_repeats,
         epochs=epochs,
-        patience=patience
+        patience=patience,
+        device=device
     )
 
     # (3). Parse deconvolution outputs
-    inferences, generatives, px = starfysh.model_eval(
+    inference_outputs, generative_outputs = sf_model.model_eval(
         model,
         adata,
-        args.sig_mean,
-        device,
-        args.log_lib,
+        visium_args,
+        poe=False,
+        device=device
     )
 

@@ -9,7 +9,7 @@ nb_requirements = [
     'notebook>=6.4.11',
     'jupyter>=7.0.0',
     'jupyterlab>=3.4.3'
-    'ipython>=7.27.0'
+    'ipython>=7.27.0',
 ]
 
 setup(
@@ -24,9 +24,9 @@ setup(
     # package_data = ""; include_package_data=True
     zip_safe=False,
     classifiers=[
-        "Programming Language :: Python ::3",
-        "License :: OSI Approved :: MIT License",
-        "Operation System :: OS Independent",
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: BSD License",
+        "Operating System :: OS Independent",
     ],
     extras_require={
         'notebooks': nb_requirements,

@@ -11,7 +11,7 @@ import torch.nn as nn
 
 from torchvision import transforms
 from torchvision.utils import make_grid
-from torch.distributions import Distribution, Normal, LogNormal, Gamma, Poisson, Dirichlet
+from torch.distributions import constraints, Distribution, Normal, Gamma, Poisson, Dirichlet
 from torch.distributions import kl_divergence as kl
 
 # Module import
@@ -25,7 +25,6 @@ np.random.seed(0)
 
 
 # TODO: inherit `AVAE` (expr model) w/ `AVAE_PoE` (expr + histology model), update latest PoE model
-
 
 class AVAE(nn.Module):
     """ 
@@ -60,9 +59,10 @@ class AVAE(nn.Module):
         self.win_loglib=torch.Tensor(win_loglib)
         
         self.c_in = adata.shape[1] # c_in : Num. input features (# input genes)
-        self.c_bn = 10 # c_bn : latent number, numbers of bottle neck
+        self.c_bn = 10 # c_bn : latent number, numbers of bottle-necks
         self.c_hidden = 256
         self.c_kn = gene_sig.shape[1]
+        self.eps = 1e-5  # for r.v. w/ numerical constraints
         
         self.alpha = torch.nn.Parameter(torch.rand(self.c_kn)*1e3,requires_grad=True)
 
@@ -117,9 +117,8 @@ class AVAE(nn.Module):
         )
         self.px_scale_decoder = nn.Sequential(
                               nn.Linear(self.c_hidden,self.c_in),
-                              nn.Softplus(),
-                              #nn.Softmax(dim=-1),
-                              #nn.Softmax(),
+                              # nn.Softplus(),
+                              nn.ReLU()
         )
         
          
@@ -141,7 +140,9 @@ class AVAE(nn.Module):
         ql_m = self.l_enc_m(hidden)
         ql_logv = self.l_enc_logv(hidden)
         ql = self.reparameterize(ql_m, ql_logv)
-        ql = torch.clamp(ql, min = 0.01)
+
+        # ql = torch.clamp(ql, min = 0.01)
+        ql = torch.clamp(ql, min=self.eps)  # non-negative constraints
 
         # x is processed by dividing the inferred library
         x_n = torch.log(1+x)
@@ -149,9 +150,7 @@ class AVAE(nn.Module):
 
         qc_m =  self.c_enc_m(hidden)
 
-        # TODO: solve the Dirichlet sampling issue (constraint: >= 0)
-        eps = 1e-10  # avoid Dirichlet concentration params == 0
-        qc = Dirichlet(self.alpha * qc_m + eps).rsample()[:,:,None]
+        qc = Dirichlet(self.alpha * qc_m + self.eps).rsample()[:,:,None]
         hidden = self.z_enc(x_n)
         qz_m_ct = self.z_enc_m(hidden).reshape([x_n.shape[0],self.c_kn,self.c_bn])
         qz_m_ct = (qc * qz_m_ct)
@@ -195,18 +194,22 @@ class AVAE(nn.Module):
 
         hidden = self.px_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
+
+        # TODO: verify whether taking exponential for `ql` term is valid?
         px_rate = torch.exp(ql) * px_scale 
         
         xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1,keepdims=True))
-        pc_p = self.alpha * xs_k + 1e-5
+        pc_p = self.alpha * xs_k + self.eps
+
+        with torch.no_grad():
+            self.px_r.clamp_(min=self.px_r)
 
         return dict(
-                    px_rate=px_rate,
-                    px_r=self.px_r,
-                    pc_p=pc_p,
-                    xs_k=xs_k,
-
-                   )
+            px_rate=px_rate,
+            px_r=self.px_r,
+            pc_p=pc_p,
+            xs_k=xs_k,
+        )
     
     
     def get_loss(
@@ -327,6 +330,8 @@ class AVAE_PoE(nn.Module):
         self.c_hidden = 256
         self.patch_r = patch_r
         self.c_kn = gene_sig.shape[1]
+        self.eps = 1e-5  # for r.v. w/ numerical constraints
+        self.MAX = 5000  # DEBUG: for controling `img_ql`, TODO: solve `ql`& `img_ql` issues on line 553-559
 
         self.alpha = torch.nn.Parameter(torch.rand(self.c_kn) * 1e3, requires_grad=True)
 
@@ -341,7 +346,6 @@ class AVAE_PoE(nn.Module):
             nn.BatchNorm1d(self.c_kn, momentum=0.01, eps=0.001),
             # nn.ReLU(),
             nn.Softmax()
-            # nn.Softplus()
         )
         self.l_enc = nn.Sequential(
             nn.Linear(self.c_in, self.c_hidden, bias=True),
@@ -374,9 +378,8 @@ class AVAE_PoE(nn.Module):
         )
         self.px_scale_decoder = nn.Sequential(
             nn.Linear(self.c_hidden, self.c_in),
-            nn.Softplus(),
-            # nn.Softmax(dim=-1),
-            # nn.Softmax(),
+            #nn.Softplus(),
+            nn.ReLU()
         )
 
         self.px_r_poe = torch.nn.Parameter(torch.randn(self.c_in), requires_grad=True)
@@ -426,9 +429,8 @@ class AVAE_PoE(nn.Module):
 
         self.POE_px_scale_decoder = nn.Sequential(
             nn.Linear(self.c_hidden, self.c_in),
-            # nn.ReLU(),
-            # nn.Softmax(),
-            nn.Softplus()
+            #nn.Softplus()
+            nn.ReLU()
         )
 
         self.POE_dec_img = nn.Sequential(
@@ -450,20 +452,21 @@ class AVAE_PoE(nn.Module):
     def inference(self, x):
         # library = torch.log(x.sum(1)).unsqueeze(1)
         # l is inferred from logrithmized x
-        x1 = torch.log(1 + x)
+        x1 = torch.log1p(x)
         hidden = self.l_enc(x1)
         ql_m = self.l_enc_m(hidden)
         ql_logv = self.l_enc_logv(hidden)
         ql = self.reparameterize(ql_m, ql_logv)
-        ql = torch.clamp(ql, min=0.1)
 
-        x_n = torch.log(1 + x)
+        # ql = torch.clamp(ql, min=0.1)
+        #with torch.no_grad():
+        ql = torch.clamp(ql, min=self.eps)  # non-negative constraints
+
+        x_n = torch.log1p(x)
         hidden = self.c_enc(x_n)
         qc_m = self.c_enc_m(hidden)
 
-        # TODO: solve the Dirichlet sampling issue (constraint: >= 0)
-        eps = 1e-10  # avoid Dirichlet concentration params == 0
-        qc = Dirichlet(self.alpha * qc_m + eps).rsample()[:, :, None]
+        qc = Dirichlet(self.alpha * qc_m + self.eps).rsample()[:, :, None]
 
         hidden = self.z_enc(x_n)
         qz_m_ct = self.z_enc_m(hidden).reshape([x1.shape[0], self.c_kn, self.c_bn])
@@ -471,7 +474,6 @@ class AVAE_PoE(nn.Module):
 
         qz_m = (qc * qz_m_ct).sum(axis=1)
         qz_logv_ct = self.z_enc_logv(hidden).reshape([x1.shape[0], self.c_kn, self.c_bn])
-        # qz_logv_ct = (qc * qz_logv_ct)
         qz_logv = (qc * qz_logv_ct).sum(axis=1)
 
         qz = self.reparameterize(qz_m, qz_logv)
@@ -490,19 +492,18 @@ class AVAE_PoE(nn.Module):
 
     def predict_imgVAE(self, x):
 
-        x = x * 255
+        # x = x * 255
         hidden = self.img_l_enc(x)
         img_ql_m = self.img_l_enc_m(hidden)
         img_ql_logv = self.img_l_enc_logv(hidden)
         img_ql = self.reparameterize(img_ql_m, img_ql_logv)
-        img_ql = torch.clamp(img_ql, min=0.1)
+
+        # img_ql = torch.clamp(img_ql, min=0.1)
+        img_ql = torch.clamp(img_ql, min=self.eps)  # non-negative constraints
 
         hidden = self.img_c_enc(x)
         img_qc_m = self.img_c_enc_m(hidden)
-
-        # TODO: resolve the Dirichlet sampling issue (constraint: >= 0)
-        eps = 1e-10  # avoid Dirichlet concentration params == 0
-        img_qc = Dirichlet(self.alpha * img_qc_m + eps).rsample()[:, :, None]
+        img_qc = Dirichlet(self.alpha * img_qc_m + self.eps).rsample()[:, :, None]
 
         hidden = self.imgVAE_z_enc(x)
         img_qz_m_ct = self.imgVAE_mu(hidden).reshape([x.shape[0], self.c_kn, self.c_bn])
@@ -548,17 +549,30 @@ class AVAE_PoE(nn.Module):
 
         hidden = self.px_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
-        px_rate = torch.exp((ql + img_ql) / 2) * px_scale
+
+        # TODO: verify whether taking exponential for `ql` term is valid?
+        # px_rate = torch.exp((ql + img_ql) / 2) * px_scale
+        px_rate = torch.clamp(
+            (ql+img_ql)/2 * px_scale,
+            min=self.eps,
+            max=self.MAX
+        )
 
         xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1, keepdims=True))
+        pc_p = self.alpha * xs_k + self.eps
 
-        pc_p = self.alpha * xs_k + 1e-5
+        with torch.no_grad():
+            self.px_r.clamp_(min=self.eps)
 
         return dict(
             px_rate=px_rate,
             px_r=self.px_r,
             pc_p=pc_p,
             xs_k=xs_k,
+
+            # DEBUG: save for numerical stability checks
+            img_ql=img_ql,
+            px_scale=px_scale,
         )
 
     def predictor_POE(
@@ -584,8 +598,8 @@ class AVAE_PoE(nn.Module):
                             )
 
         mu_poe = var_poe * (0 +
-                            mu_exp * torch.div(1., torch.exp(logvar_exp) + 1e-5) +
-                            mu_img * torch.div(1., torch.exp(logvar_img) + 1e-5)
+                            mu_exp * torch.div(1., torch.exp(logvar_exp) + self.eps) +
+                            mu_img * torch.div(1., torch.exp(logvar_img) + self.eps)
                             )
 
         z = self.reparameterize(mu_poe, torch.log(var_poe + 0.001))
@@ -925,6 +939,11 @@ class NegBinom(Distribution):
     lambda ~ Gamma(mu, theta)
     x ~ Poisson(lambda)
     """
+    arg_constraints = {
+        'mu': constraints.greater_than_eq(0),
+        'theta': constraints.greater_than_eq(0),
+    }
+    support = constraints.nonnegative_integer
 
     def __init__(self, mu, theta, eps=1e-10):
         """
@@ -938,13 +957,10 @@ class NegBinom(Distribution):
             dispersion of NegBinom. distribution
             shape - [# genes,]
         """
-        super(NegBinom, self).__init__(validate_args=False)
-        assert (mu > 0).sum() and (theta > 0).sum(), \
-            "Negative mean / dispersion of Negative detected"
-
         self.mu = mu
         self.theta = theta
         self.eps = eps
+        super(NegBinom, self).__init__(validate_args=True)
 
     def sample(self):
         lambdas = Gamma(

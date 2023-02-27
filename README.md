@@ -31,7 +31,7 @@ Please refer to [Starfysh Documentation](http://starfysh.readthedocs.io) for add
 
 ```bash
 # install
-python setup.py install --user
+pip install Starfysh
 ```
 
 ## Models & I/O:

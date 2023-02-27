@@ -1,4 +1,8 @@
-<img src=figure/logo.png width="700" />
+<img src=figure/logo.png width="600" />
+
+[![Documentation Status](https://readthedocs.org/projects/cellpose/badge/?version=latest)](https://readthedocs.org/projects/starfysh/badge/?version=latest)
+[![Licence: GPL v3](https://img.shields.io/github/license/azizilab/starfysh)](https://github.com/azizilab/starfysh/blob/master/LICENSE)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/152y-RpmRTEUJ16c_kF3KRwSRjm_THupv?authuser=1)
 
 ## Starfysh: Spatial Transcriptomic Analysis using Reference-Free auxiliarY deep generative modeling and Shared Histology
 
@@ -7,10 +11,6 @@ Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Tr
 <img src=figure/github_figure_1.png width="1000" />
 
 <img src=figure/github_figure_2.png width="1000" />
-
-[![Documentation Status](https://readthedocs.org/projects/cellpose/badge/?version=latest)](https://readthedocs.org/projects/starfysh/badge/?version=latest)
-[![Licence: GPL v3](https://img.shields.io/github/license/azizilab/starfysh)](https://github.com/azizilab/starfysh/blob/master/LICENSE)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/BayraktarLab/cell2location/blob/master/docs/notebooks/cell2location_tutorial.ipynb)
 
 ## Quickstart tutorials on Google Colab
   - [1. Basic deconvolution on an example breast cancer data (dataset & signature files included).](https://colab.research.google.com/drive/152y-RpmRTEUJ16c_kF3KRwSRjm_THupv?authuser=1) 

@@ -39,6 +39,7 @@ class AVAE(nn.Module):
         adata,
         gene_sig,
         win_loglib,
+        alpha_mul=1e3
     ) -> None:
         """
         Auxiliary Variational AutoEncoder (AVAE) - Core model for
@@ -54,17 +55,20 @@ class AVAE(nn.Module):
 
         win_loglib : float
             Log-library size smoothed with neighboring spots
+
+        alpha_mul : float
+            Dirichlet concentration parameter (DEBUG)
         """
         super().__init__()
         self.win_loglib=torch.Tensor(win_loglib)
         
         self.c_in = adata.shape[1] # c_in : Num. input features (# input genes)
-        self.c_bn = 10 # c_bn : latent number, numbers of bottle-necks
+        self.c_bn = 10  # c_bn : latent number, numbers of bottle-necks
         self.c_hidden = 256
         self.c_kn = gene_sig.shape[1]
         self.eps = 1e-5  # for r.v. w/ numerical constraints
         
-        self.alpha = torch.nn.Parameter(torch.rand(self.c_kn)*1e3,requires_grad=True)
+        self.alpha = torch.nn.Parameter(torch.rand(self.c_kn)*alpha_mul, requires_grad=True)
 
         self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
         self.qu_m = torch.nn.Parameter(torch.randn(self.c_kn, self.c_bn), requires_grad=True)
@@ -135,20 +139,23 @@ class AVAE(nn.Module):
     def inference(self, x):
         # l is inferred from logrithmized x
 
-        x_n = torch.log(1+x)
+        x_n = torch.log1p(x)
         hidden = self.l_enc(x_n)
         ql_m = self.l_enc_m(hidden)
         ql_logv = self.l_enc_logv(hidden)
         ql = self.reparameterize(ql_m, ql_logv)
 
+        # Non-negative constraints
+        with torch.no_grad():
+            self.alpha.clamp_(min=self.eps)
         # ql = torch.clamp(ql, min = 0.01)
-        ql = torch.clamp(ql, min=self.eps)  # non-negative constraints
+        ql = torch.clamp(ql, min=self.eps)
 
         # x is processed by dividing the inferred library
-        x_n = torch.log(1+x)
+        x_n = torch.log1p(x)
         hidden = self.c_enc(x_n)
 
-        qc_m =  self.c_enc_m(hidden)
+        qc_m = self.c_enc_m(hidden)
 
         qc = Dirichlet(self.alpha * qc_m + self.eps).rsample()[:,:,None]
         hidden = self.z_enc(x_n)
@@ -195,7 +202,6 @@ class AVAE(nn.Module):
         hidden = self.px_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
 
-        # TODO: verify whether taking exponential for `ql` term is valid?
         px_rate = torch.exp(ql) * px_scale 
         
         xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1,keepdims=True))
@@ -302,6 +308,7 @@ class AVAE_PoE(nn.Module):
         gene_sig,
         patch_r,
         win_loglib,
+        alpha_mul=1e3
     ) -> None:
         """
         Auxiliary Variational AutoEncoder (AVAE) with Joint H&E inference
@@ -320,6 +327,10 @@ class AVAE_PoE(nn.Module):
 
         win_loglib : float
             Log-library size smoothed with neighboring spots
+
+        alpha_mul : float
+            Dirichlet concentration param (DEBUG)
+
         """
         super(AVAE_PoE, self).__init__()
 
@@ -333,7 +344,7 @@ class AVAE_PoE(nn.Module):
         self.eps = 1e-5  # for r.v. w/ numerical constraints
         self.MAX = 5000  # DEBUG: for controling `img_ql`, TODO: solve `ql`& `img_ql` issues on line 553-559
 
-        self.alpha = torch.nn.Parameter(torch.rand(self.c_kn) * 1e3, requires_grad=True)
+        self.alpha = torch.nn.Parameter(torch.rand(self.c_kn)*alpha_mul, requires_grad=True)
 
         self.c_enc = nn.Sequential(
             nn.Linear(self.c_in, self.c_hidden, bias=True),
@@ -458,9 +469,11 @@ class AVAE_PoE(nn.Module):
         ql_logv = self.l_enc_logv(hidden)
         ql = self.reparameterize(ql_m, ql_logv)
 
+        # Non-negative constraints
+        with torch.no_grad():
+            self.alpha.clamp_(min=self.eps)
         # ql = torch.clamp(ql, min=0.1)
-        #with torch.no_grad():
-        ql = torch.clamp(ql, min=self.eps)  # non-negative constraints
+        ql = torch.clamp(ql, min=self.eps)
 
         x_n = torch.log1p(x)
         hidden = self.c_enc(x_n)
@@ -550,10 +563,10 @@ class AVAE_PoE(nn.Module):
         hidden = self.px_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
 
-        # TODO: verify whether taking exponential for `ql` term is valid?
+        # TODO: verify taking avg of ql & img_ql
         # px_rate = torch.exp((ql + img_ql) / 2) * px_scale
         px_rate = torch.clamp(
-            (ql+img_ql)/2 * px_scale,
+            torch.exp((ql+img_ql)/2) * px_scale,
             min=self.eps,
             max=self.MAX
         )

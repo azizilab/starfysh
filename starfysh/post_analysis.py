@@ -29,17 +29,17 @@ def plot_type_all(inference_outputs,u, proportions):
     plt.axis('off')
     
     
-def get_corr_map(inference_outputs,proportions):
+def get_corr_map(inference_outputs,  proportions):
     qc_m_n = inference_outputs["qc_m"].detach().cpu().numpy()
     corr_map_qcm = np.zeros([qc_m_n.shape[1],qc_m_n.shape[1]])
 
     for i in range(corr_map_qcm.shape[0]):
         for j in range(corr_map_qcm.shape[0]):
-            corr_map_qcm[i,j], _ = pearsonr(qc_m_n[:,i], proportions.iloc[:,j])
+            corr_map_qcm[i, j], _ = pearsonr(qc_m_n[:,i], proportions.iloc[:, j])
               
 
     plt.figure(dpi=300,figsize=(3.2,3.2))
-    ax = sns.heatmap(corr_map_qcm, annot=True,
+    ax = sns.heatmap(corr_map_qcm.T, annot=True,
                      cmap='RdBu_r',vmax=1,vmin=-1,
                      cbar_kws={'label': 'Cell type proportion corr.'}
                     )

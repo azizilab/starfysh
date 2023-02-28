@@ -279,6 +279,10 @@ def run_starfysh(
         lr=0.001,
         epochs=100,
         patience=10,
+
+        # DEBUG: test how strong alpha affects the deconvolution
+        alpha_mul=1e3,
+
         poe=False,
         device=torch.device('cpu'),
         verbose=True
@@ -353,7 +357,10 @@ def run_starfysh(
                 adata=adata,
                 gene_sig=sig_mean_znorm,
                 patch_r=visium_args.params['patch_r'],
-                win_loglib=win_loglib
+                win_loglib=win_loglib,
+
+                alpha_mul=alpha_mul,
+
             )
             # Update patched & flattened image patches
             visium_args._update_img_patches(trainset)
@@ -361,7 +368,10 @@ def run_starfysh(
             model = AVAE(
                 adata=adata,
                 gene_sig=sig_mean_znorm,
-                win_loglib=win_loglib
+                win_loglib=win_loglib,
+
+                alpha_mul=alpha_mul,
+
             )
             
         model = model.to(device)

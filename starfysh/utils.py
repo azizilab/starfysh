@@ -107,10 +107,10 @@ class VisiumArguments:
                                                window_size=self.params['window_size']
                                                )
 
-        # Retrieve & Z-norm signature gexp
+        # Retrieve & normalize signature gexp
         LOGGER.info('Retrieving & normalizing signature gene expressions...')
         self.sig_mean = self._get_sig_mean()
-        self.sig_mean_znorm = self._znorm_sig(z_axis=self.params['z_axis'])
+        self.sig_mean_znorm = self._norm_sig(z_axis=self.params['z_axis'])
 
         # Get anchor spots
         LOGGER.info('Identifying anchor spots (highly expression of specific cell-type signatures)...')
@@ -182,7 +182,7 @@ class VisiumArguments:
     def _update_anchors(self):
         """Re-calculate anchor spots given updated gene signatures"""
         self.sig_mean = self._get_sig_mean()
-        self.sig_mean_znorm = self._znorm_sig(z_axis=self.params['z_axis'])
+        self.sig_mean_znorm = self._norm_sig(z_axis=self.params['z_axis'])
         self.adata.uns['cell_types'] = list(self.gene_sig.columns)
 
         LOGGER.info('Recalculating anchor spots (highly expression of specific cell-type signatures)...')
@@ -256,6 +256,9 @@ class VisiumArguments:
         sig_mean_zscore[sig_mean_zscore < 0] = 0
         sig_mean_zscore = sig_mean_zscore.fillna(0)
         return sig_mean_zscore
+
+    def _norm_sig(self, z_axis):
+        return self.sig_mean.apply(lambda x: x / x.mean(), axis=z_axis)
 
 
 # --------------------------------

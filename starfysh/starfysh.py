@@ -8,6 +8,7 @@ import random
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from torchvision import transforms
 from torchvision.utils import make_grid
@@ -17,15 +18,15 @@ from torch.distributions import kl_divergence as kl
 # Module import
 from starfysh import LOGGER
 
-
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 random.seed(0)
 torch.manual_seed(0)
 np.random.seed(0)
 
 
-# TODO: inherit `AVAE` (expr model) w/ `AVAE_PoE` (expr + histology model), update latest PoE model
-
+# TODO:
+#  inherit `AVAE` (expr model) w/ `AVAE_PoE` (expr + histology model), update latest PoE model
+#  Add device as class instance
 class AVAE(nn.Module):
     """ 
     Model design
@@ -67,14 +68,16 @@ class AVAE(nn.Module):
         self.c_hidden = 256
         self.c_kn = gene_sig.shape[1]
         self.eps = 1e-5  # for r.v. w/ numerical constraints
-        
+
+        # DEBUG: fix alpha, rerun multiple alphas to see bias from input -> output
         self.alpha = torch.nn.Parameter(torch.rand(self.c_kn)*alpha_mul, requires_grad=True)
+        # self.alpha = torch.rand(self.c_kn)*alpha_mul
+        # self.alpha = self.alpha.to(torch.device('cuda'))
 
         self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
         self.qu_m = torch.nn.Parameter(torch.randn(self.c_kn, self.c_bn), requires_grad=True)
         self.qu_logv = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
 
-        
         self.c_enc = nn.Sequential(
                                 nn.Linear(self.c_in, self.c_hidden, bias=True),
                                 nn.BatchNorm1d(self.c_hidden, momentum=0.01,eps=0.001),
@@ -121,11 +124,9 @@ class AVAE(nn.Module):
         )
         self.px_scale_decoder = nn.Sequential(
                               nn.Linear(self.c_hidden,self.c_in),
-                              # nn.Softplus(),
                               nn.ReLU()
         )
-        
-         
+
     def reparameterize(self, mu, log_var):
         """
         :param mu: mean from the encoder's latent space
@@ -146,10 +147,7 @@ class AVAE(nn.Module):
         ql = self.reparameterize(ql_m, ql_logv)
 
         # Non-negative constraints
-        with torch.no_grad():
-            self.alpha.clamp_(min=self.eps)
-        # ql = torch.clamp(ql, min = 0.01)
-        ql = torch.clamp(ql, min=self.eps)
+        self.alpha = nn.Parameter(F.softplus(self.alpha) + self.eps)
 
         # x is processed by dividing the inferred library
         x_n = torch.log1p(x)
@@ -202,13 +200,11 @@ class AVAE(nn.Module):
         hidden = self.px_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
 
-        px_rate = torch.exp(ql) * px_scale 
+        px_rate = torch.exp(ql) * px_scale + self.eps
         
         xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1,keepdims=True))
         pc_p = self.alpha * xs_k + self.eps
-
-        with torch.no_grad():
-            self.px_r.clamp_(min=self.px_r)
+        self.px_r = nn.Parameter(F.softplus(self.px_r))
 
         return dict(
             px_rate=px_rate,
@@ -216,7 +212,6 @@ class AVAE(nn.Module):
             pc_p=pc_p,
             xs_k=xs_k,
         )
-    
     
     def get_loss(
         self,
@@ -250,21 +245,28 @@ class AVAE(nn.Module):
         kl_divergence_u = kl(
             Normal(qu_m, torch.exp(qu_logv / 2)),
             Normal(torch.zeros_like(qu_m), torch.ones_like(qu_m))
-        ).sum(
-            dim=1
-        ).mean()
+        ).sum(dim=1).mean()
 
         mean_pz = (qu.unsqueeze(0) * qc).sum(axis=1)
         std_pz = (torch.exp(qs_logm / 2).unsqueeze(0) * qc).sum(axis=1)
-        kl_divergence_z = kl(Normal(qz_m, torch.exp(qz_logv / 2)), Normal(mean_pz, std_pz)).sum(
-            dim=1
-        ).mean()
-     
-        kl_divergence_n = kl(Normal(ql_m, torch.sqrt(torch.exp(ql_logv))), Normal(library,torch.ones_like(ql))).sum(
-            dim=1
-        ).mean()
+        kl_divergence_z = kl(
+            Normal(qz_m, torch.exp(qz_logv / 2)),
+            Normal(mean_pz, std_pz)
+        ).sum(dim=1).mean()
+
+        # Note: here library is the smoothed, log-lib from observations
+        kl_divergence_n = kl(
+            Normal(ql_m, torch.sqrt(torch.exp(ql_logv))),
+            Normal(library, torch.ones_like(ql))
+        ).sum(dim=1).mean()
         
-        
+        # TODO: should we calc. kl_divergence_c on all spots? non-anchor spots should also follow Dir.
+        kl_divergence_c = kl(
+            Dirichlet(qc_m * self.alpha),
+            Dirichlet(pc_p)
+        ).mean()
+
+        """
         if (x_peri[:,0] == 1).sum() > 0:
             kl_divergence_c = kl(Dirichlet(qc_m[x_peri[:,0]==1]*self.alpha), Dirichlet(pc_p[x_peri[:,0]==1])).mean()
             if (x_peri[:,0] == 0).sum() > 0:
@@ -275,6 +277,7 @@ class AVAE(nn.Module):
                     kl_divergence_c = kl_divergence_c +  1e-2*kl(Dirichlet(qc_m[(x_peri[:,0]==0)&(library[:,0]>=torch.quantile(self.win_loglib, 0.2))]*self.alpha), Dirichlet(pc_p[(x_peri[:,0]==0)&(library[:,0]>=torch.quantile(self.win_loglib, 0.2))])).mean()
         else:
             kl_divergence_c = torch.Tensor([0.0])
+        """
 
         reconst_loss = -NegBinom(px_rate, torch.exp(px_r)).log_prob(x).sum(-1).mean()
         
@@ -342,8 +345,6 @@ class AVAE_PoE(nn.Module):
         self.patch_r = patch_r
         self.c_kn = gene_sig.shape[1]
         self.eps = 1e-5  # for r.v. w/ numerical constraints
-        self.MAX = 5000  # DEBUG: for controling `img_ql`, TODO: solve `ql`& `img_ql` issues on line 553-559
-
         self.alpha = torch.nn.Parameter(torch.rand(self.c_kn)*alpha_mul, requires_grad=True)
 
         self.c_enc = nn.Sequential(
@@ -461,7 +462,9 @@ class AVAE_PoE(nn.Module):
         return sample
 
     def inference(self, x):
-        # library = torch.log(x.sum(1)).unsqueeze(1)
+        # TODO: Double-check gradient vanishing for qc_m, likely due to KL( q(c|x) || p(c) )
+        # verify whether mul. w/ alpha for q(c|x)
+
         # l is inferred from logrithmized x
         x1 = torch.log1p(x)
         hidden = self.l_enc(x1)
@@ -470,15 +473,11 @@ class AVAE_PoE(nn.Module):
         ql = self.reparameterize(ql_m, ql_logv)
 
         # Non-negative constraints
-        with torch.no_grad():
-            self.alpha.clamp_(min=self.eps)
-        # ql = torch.clamp(ql, min=0.1)
-        ql = torch.clamp(ql, min=self.eps)
+        self.alpha = nn.Parameter(F.softplus(self.alpha) + self.eps)
 
         x_n = torch.log1p(x)
         hidden = self.c_enc(x_n)
         qc_m = self.c_enc_m(hidden)
-
         qc = Dirichlet(self.alpha * qc_m + self.eps).rsample()[:, :, None]
 
         hidden = self.z_enc(x_n)
@@ -505,14 +504,14 @@ class AVAE_PoE(nn.Module):
 
     def predict_imgVAE(self, x):
 
+        # TODO: verify x numerical ranges
         # x = x * 255
+        x = torch.log1p(x)
+
         hidden = self.img_l_enc(x)
         img_ql_m = self.img_l_enc_m(hidden)
         img_ql_logv = self.img_l_enc_logv(hidden)
         img_ql = self.reparameterize(img_ql_m, img_ql_logv)
-
-        # img_ql = torch.clamp(img_ql, min=0.1)
-        img_ql = torch.clamp(img_ql, min=self.eps)  # non-negative constraints
 
         hidden = self.img_c_enc(x)
         img_qc_m = self.img_c_enc_m(hidden)
@@ -554,7 +553,6 @@ class AVAE_PoE(nn.Module):
         xs_k : torch.Tensor
             Z-normed avg. gene exprs
         """
-        xs_k = xs_k.to()
         qz = inference_outputs['qz']
         ql = inference_outputs['ql']
         ql_m = inference_outputs['ql_m']
@@ -563,19 +561,13 @@ class AVAE_PoE(nn.Module):
         hidden = self.px_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
 
-        # TODO: verify taking avg of ql & img_ql
-        # px_rate = torch.exp((ql + img_ql) / 2) * px_scale
-        px_rate = torch.clamp(
-            torch.exp((ql+img_ql)/2) * px_scale,
-            min=self.eps,
-            max=self.MAX
-        )
+        # TODO: summation in log space is valid for PoE, both `ql` & `img_ql` are on log space, add denominator: (prior var^-1 + inference var^-1)
+        # TODO: NEED TO ADD DENOMINATOR (reference from PoE paper): PoE page 4
+        px_rate = torch.exp(ql + img_ql) * px_scale + self.eps
 
         xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1, keepdims=True))
         pc_p = self.alpha * xs_k + self.eps
-
-        with torch.no_grad():
-            self.px_r.clamp_(min=self.eps)
+        self.px_r = nn.Parameter(F.softplus(self.px_r))
 
         return dict(
             px_rate=px_rate,
@@ -682,18 +674,28 @@ class AVAE_PoE(nn.Module):
         mean = torch.zeros_like(qz_m)
         scale = torch.ones_like(qz_logv)
 
-        kl_divergence_z = kl(Normal(qz_m, torch.sqrt(torch.exp(qz_logv))), Normal(mean, scale)).sum(
-            dim=1
+        kl_divergence_z = kl(
+            Normal(qz_m, torch.sqrt(torch.exp(qz_logv))),
+            Normal(mean, scale)
+        ).sum(dim=1).mean()
+
+        # Note: here library is the smoothed, log-lib from observations
+        kl_divergence_n = kl(
+            Normal(ql_m, torch.sqrt(torch.exp(ql_logv))),
+            Normal(library, torch.ones_like(ql))
+        ).sum(dim=1).mean()
+
+        # TODO: should we calc. kl_divergence_c on all spots? non-anchor spots should also follow Dir.
+        kl_divergence_c = kl(
+            Dirichlet(qc_m * self.alpha),
+            Dirichlet(pc_p)
         ).mean()
 
-        kl_divergence_n = kl(Normal(ql_m, torch.sqrt(torch.exp(ql_logv))), Normal(library, torch.ones_like(ql))).sum(
-            dim=1
-        ).mean()
-
+        """
         if (x_peri[:, 0] == 1).sum() > 0:
-
             kl_divergence_c = kl(Dirichlet(qc_m[x_peri[:, 0] == 1] * self.alpha),
                                  Dirichlet(pc_p[x_peri[:, 0] == 1])).mean()
+
             if (x_peri[:, 0] == 0).sum() > 0:
                 if ((x_peri[:, 0] == 0) & (library[:, 0] < torch.quantile(self.win_loglib, 0.2))).sum() > 0:
                     kl_divergence_c = kl_divergence_c + 1e-1 * kl(Dirichlet(qc_m[(x_peri[:, 0] == 0) & (
@@ -705,6 +707,7 @@ class AVAE_PoE(nn.Module):
                         pc_p[(x_peri[:, 0] == 0) & (library[:, 0] >= torch.quantile(self.win_loglib, 0.2))])).mean()
         else:
             kl_divergence_c = torch.Tensor([0.0])
+        """
 
         reconst_loss = -NegBinom(px_rate, torch.exp(px_r)).log_prob(x).sum(-1).mean()
 
@@ -1003,22 +1006,20 @@ def model_eval(
     poe=False,
     device=torch.device('cpu')
 ):
-    # TODO: solve NegBinom learnt params (inf. `px_rate` & negative `px_r`) in PoE --> unable to sample `px`
-    # For now, only store `px` with non-PoE case
-
     model.eval()
     model = model.to(device)
 
     x_in = torch.Tensor(adata.to_df().values).to(device)
     sig_means = torch.Tensor(visium_args.sig_mean_znorm.values).to(device)
 
-    inference_outputs = model.inference(x_in)
-    if poe:
-        img_in = torch.Tensor(visium_args.get_img_patches()).float().to(device)
-        img_outputs = model.predict_imgVAE(img_in)
-        generative_outputs = model.generative(inference_outputs, sig_means, img_outputs)
-    else:
-        generative_outputs = model.generative(inference_outputs, sig_means)
+    with torch.no_grad():
+        inference_outputs = model.inference(x_in)
+        if poe:
+            img_in = torch.Tensor(visium_args.get_img_patches()).float().to(device)
+            img_outputs = model.predict_imgVAE(img_in)
+            generative_outputs = model.generative(inference_outputs, sig_means, img_outputs)
+        else:
+            generative_outputs = model.generative(inference_outputs, sig_means)
 
     try:
         px = NegBinom(
@@ -1032,7 +1033,10 @@ def model_eval(
     # Save inference & generative outputs in adata
     for rv in inference_outputs.keys():
         val = inference_outputs[rv].detach().cpu().numpy().squeeze()
-        if "qu" not in rv and "qs" not in rv:
+
+        if rv == 'ql' or rv == 'ql_m':
+            adata.obsm[rv] = np.exp(val)  # transform learnt `l` to count space
+        elif "qu" not in rv and "qs" not in rv:
             adata.obsm[rv] = val
         else:
             adata.uns[rv] = val

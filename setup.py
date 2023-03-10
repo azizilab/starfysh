@@ -8,7 +8,7 @@ nb_requirements = [
     'nbformat>=5.1.3',
     'notebook>=6.4.11',
     'jupyter>=7.0.0',
-    'jupyterlab>=3.4.3'
+    'jupyterlab>=3.4.3',
     'ipython>=7.27.0',
 ]
 

@@ -111,7 +111,7 @@ class VisiumArguments:
         LOGGER.info('Retrieving & normalizing signature gene expressions...')
         self.sig_mean = self._get_sig_mean()
         self.sig_mean_znorm = self._norm_sig(z_axis=self.params['z_axis'])
-
+        
         # Get anchor spots
         LOGGER.info('Identifying anchor spots (highly expression of specific cell-type signatures)...')
         anchor_info = get_anchor_spots(self.adata,
@@ -121,8 +121,8 @@ class VisiumArguments:
                                        n_anchor=self.params['n_anchors']
                                        )
         self.pure_spots, self.pure_dict, self.pure_idx = anchor_info
-        self.alpha_min = get_alpha_min(self.sig_mean, self.pure_dict)  # Calculate alpha mean
-
+        # self.sig_mean_znorm *= self.pure_idx  # mask non-anchor spots
+        
         del self.adata.raw, self.adata_norm.raw 
 
     def get_adata(self):
@@ -267,8 +267,6 @@ class VisiumArguments:
 
 def init_weights(module):
     if type(module) == nn.Linear:
-        # torch.nn.init.xavier_normal(module.weight)
-        # torch.nn.init.kaiming_normal_(module.weight)
         torch.nn.init.kaiming_uniform_(module.weight)
 
     elif type(module) == nn.BatchNorm1d:
@@ -281,8 +279,7 @@ def run_starfysh(
         n_repeats=3,
         lr=0.001,
         epochs=100,
-        patience=10,
-
+        
         # DEBUG: test how strong alpha affects the deconvolution
         alpha_mul=1e3,
 
@@ -292,11 +289,7 @@ def run_starfysh(
 ):
     """
     Wrapper to run starfysh deconvolution.
-
-        Note: adding early-stopping mechanism evaluated by loss c
-        - early-stopping with patience=10
-        - choose best among 3 rerun
-
+    
     Parameters
     ----------
     visium_args : VisiumArguments
@@ -309,9 +302,6 @@ def run_starfysh(
     epochs : int
         Max. number of iterations
 
-    patience : int
-        Max. counts for early-stopping if q(c) doesn't drop
-
     poe : bool
         Whether to perform inference with Poe w/ image integration
 
@@ -323,9 +313,7 @@ def run_starfysh(
     loss : np.ndarray
         Training losses
     """
-
     np.random.seed(0)
-    max_patience = patience
 
     # Loading parameters
     adata = visium_args.adata
@@ -351,8 +339,6 @@ def run_starfysh(
     for i in range(n_repeats):
         if verbose:
             LOGGER.info(" ===  Restart Starfysh {0} === \n".format(i + 1))
-
-        patience = max_patience
         best_loss_c = np.inf
 
         if poe:
@@ -361,9 +347,7 @@ def run_starfysh(
                 gene_sig=sig_mean_znorm,
                 patch_r=visium_args.params['patch_r'],
                 win_loglib=win_loglib,
-
                 alpha_mul=alpha_mul,
-
             )
             # Update patched & flattened image patches
             visium_args._update_img_patches(trainset)
@@ -372,13 +356,10 @@ def run_starfysh(
                 adata=adata,
                 gene_sig=sig_mean_znorm,
                 win_loglib=win_loglib,
-
                 alpha_mul=alpha_mul,
-
             )
-            
-        model = model.to(device)
 
+        model = model.to(device)
         loss_dict = {
             'reconst': [],
             'c': [],
@@ -393,28 +374,16 @@ def run_starfysh(
             LOGGER.info('Initializing model parameters...')
         model.apply(init_weights)
         optimizer = optim.Adam(model.parameters(), lr=lr)
-
-        # TODO: test scheduler vs. early stopping
-        # scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
+        scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
         
         for epoch in range(epochs):
-            if patience == 0:
-                loss_c_list[i] = best_loss_c
-                if verbose:
-                    LOGGER.info('Saving best-performing model; Early stopping...')
-                break
-
             result = train_func(model, trainloader, device, optimizer)
             torch.cuda.empty_cache()
 
             loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n, corr_list = result
-
             if loss_c < best_loss_c:
-                patience = max_patience
                 models[i] = model
                 best_loss_c = loss_c
-            else:
-                patience -= 1
 
             torch.cuda.empty_cache()
 
@@ -425,17 +394,16 @@ def run_starfysh(
             loss_dict['c'].append(loss_c)
             loss_dict['n'].append(loss_n)
 
-            if (epoch + 1) % 10 == 0 or patience == 0:
-                if verbose:
-                    LOGGER.info("Epoch[{}/{}], train_loss: {:.4f}, train_reconst: {:.4f}, train_u: {:.4f},train_z: {:.4f},train_c: {:.4f},train_n: {:.4f}".format(
-                        epoch + 1, epochs, loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n)
-                    )
-
-            # scheduler.step()
+            if (epoch + 1) % 10 == 0 and verbose:
+                LOGGER.info("Epoch[{}/{}], train_loss: {:.4f}, train_reconst: {:.4f}, train_u: {:.4f},train_z: {:.4f},train_c: {:.4f},train_n: {:.4f}".format(
+                    epoch + 1, epochs, loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n)
+                )
+            scheduler.step()
 
         losses.append(loss_dict)
-
+        loss_c_list[i] = best_loss_c
         if verbose:
+            LOGGER.info('Saving the best-performance model...')
             LOGGER.info(" === Finished training === \n")
 
     idx = np.argmin(loss_c_list)

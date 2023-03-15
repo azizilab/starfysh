@@ -69,9 +69,9 @@ class AVAE(nn.Module):
         self.c_kn = gene_sig.shape[1]
         self.eps = 1e-5  # for r.v. w/ numerical constraints
 
-        # DEBUG: fix alpha, rerun multiple alphas to see bias from input -> output
-        self.alpha = torch.nn.Parameter(torch.rand(self.c_kn)*alpha_mul, requires_grad=True)
-        # self.alpha = torch.rand(self.c_kn)*alpha_mul
+        # DEBUG: fix alpha & mute random init., rerun multiple alphas to see bias from input -> output
+        self._alpha = torch.nn.Parameter(torch.ones(self.c_kn) * 1/self.c_kn * alpha_mul)
+        # self.alpha = torch.ones(self.c_kn)*alpha_mul
         # self.alpha = self.alpha.to(torch.device('cuda'))
 
         self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
@@ -115,7 +115,7 @@ class AVAE(nn.Module):
         self.z_enc_logv = nn.Linear(self.c_hidden, self.c_bn * self.c_kn)
         
         # gene dispersion
-        self.px_r = torch.nn.Parameter(torch.randn(self.c_in),requires_grad=True)
+        self._px_r = torch.nn.Parameter(torch.randn(self.c_in),requires_grad=True)
 
         # neural network g to get the x_m and x_v, p(x|z), g(z,\phi_3)=[x_m,x_v]
         self.px_hidden_decoder = nn.Sequential(
@@ -132,38 +132,31 @@ class AVAE(nn.Module):
         :param mu: mean from the encoder's latent space
         :param log_var: log variance from the encoder's latent space
         """
-        std = torch.exp(0.5*log_var) # standard deviation
-        eps = torch.randn_like(std) # `randn_like` as we need the same size
-        sample = mu + (eps * std) # sampling
+        std = torch.exp(0.5*log_var)  # standard deviation
+        eps = torch.randn_like(std)  # `randn_like` as we need the same size
+        sample = mu + (eps * std)  # sampling
         return sample
     
     def inference(self, x):
-        # l is inferred from logrithmized x
-
         x_n = torch.log1p(x)
         hidden = self.l_enc(x_n)
         ql_m = self.l_enc_m(hidden)
         ql_logv = self.l_enc_logv(hidden)
         ql = self.reparameterize(ql_m, ql_logv)
 
-        # Non-negative constraints
-        self.alpha = nn.Parameter(F.softplus(self.alpha) + self.eps)
-
         # x is processed by dividing the inferred library
         x_n = torch.log1p(x)
         hidden = self.c_enc(x_n)
-
         qc_m = self.c_enc_m(hidden)
-
         qc = Dirichlet(self.alpha * qc_m + self.eps).rsample()[:,:,None]
         hidden = self.z_enc(x_n)
+
         qz_m_ct = self.z_enc_m(hidden).reshape([x_n.shape[0],self.c_kn,self.c_bn])
         qz_m_ct = (qc * qz_m_ct)
-        
         qz_m = qz_m_ct.sum(axis=1)
+
         qz_logv_ct = self.z_enc_logv(hidden).reshape([x_n.shape[0],self.c_kn,self.c_bn])
         qz_logv_ct = (qc * qz_logv_ct)
-        
         qz_logv = qz_logv_ct.sum(axis=1)
         qz = self.reparameterize(qz_m, qz_logv)
 
@@ -180,7 +173,7 @@ class AVAE(nn.Module):
                     qz_logv_ct = qz_logv_ct,
                     qz=qz,
                     ql_m=ql_m,
-                    ql_logv = ql_logv,
+                    ql_logv=ql_logv,
                     ql=ql,
                     qu_m=qu_m,
                     qu_logv=qu_logv,
@@ -200,14 +193,13 @@ class AVAE(nn.Module):
         hidden = self.px_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
 
-        px_rate = torch.exp(ql) * px_scale + self.eps
+        self._px_rate = torch.exp(ql) * px_scale
         
-        xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1,keepdims=True))
+        #xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1,keepdims=True))
         pc_p = self.alpha * xs_k + self.eps
-        self.px_r = nn.Parameter(F.softplus(self.px_r))
 
         return dict(
-            px_rate=px_rate,
+            px_rate=self.px_rate,
             px_r=self.px_r,
             pc_p=pc_p,
             xs_k=xs_k,
@@ -266,19 +258,6 @@ class AVAE(nn.Module):
             Dirichlet(pc_p)
         ).mean()
 
-        """
-        if (x_peri[:,0] == 1).sum() > 0:
-            kl_divergence_c = kl(Dirichlet(qc_m[x_peri[:,0]==1]*self.alpha), Dirichlet(pc_p[x_peri[:,0]==1])).mean()
-            if (x_peri[:,0] == 0).sum() > 0:
-                # para-dependent
-                if ((x_peri[:,0]==0)&(library[:,0]<torch.quantile(self.win_loglib, 0.2))).sum()>0:
-                    kl_divergence_c = kl_divergence_c +  1e-1*kl(Dirichlet(qc_m[(x_peri[:,0]==0)&(library[:,0]<torch.quantile(self.win_loglib, 0.2))]*self.alpha), Dirichlet(pc_p[(x_peri[:,0]==0)&(library[:,0]<torch.quantile(self.win_loglib, 0.2))])).mean()
-                if ((x_peri[:,0]==0)&(library[:,0]>=torch.quantile(self.win_loglib, 0.2))).sum()>0:
-                    kl_divergence_c = kl_divergence_c +  1e-2*kl(Dirichlet(qc_m[(x_peri[:,0]==0)&(library[:,0]>=torch.quantile(self.win_loglib, 0.2))]*self.alpha), Dirichlet(pc_p[(x_peri[:,0]==0)&(library[:,0]>=torch.quantile(self.win_loglib, 0.2))])).mean()
-        else:
-            kl_divergence_c = torch.Tensor([0.0])
-        """
-
         reconst_loss = -NegBinom(px_rate, torch.exp(px_r)).log_prob(x).sum(-1).mean()
         
         reconst_loss = reconst_loss.to(device)
@@ -295,6 +274,17 @@ class AVAE(nn.Module):
                 kl_divergence_c,
                 kl_divergence_n
                )
+    @property
+    def alpha(self):
+        return F.softplus(self._alpha) + self.eps
+
+    @property
+    def px_rate(self):
+        return F.softplus(self._px_rate) + self.eps
+    
+    @property
+    def px_r(self):
+        return F.softplus(self._px_r) + self.eps
 
 
 class AVAE_PoE(nn.Module):
@@ -345,7 +335,7 @@ class AVAE_PoE(nn.Module):
         self.patch_r = patch_r
         self.c_kn = gene_sig.shape[1]
         self.eps = 1e-5  # for r.v. w/ numerical constraints
-        self.alpha = torch.nn.Parameter(torch.rand(self.c_kn)*alpha_mul, requires_grad=True)
+        self._alpha = torch.nn.Parameter(torch.ones(self.c_kn) * 1/self.c_kn * alpha_mul, requires_grad=True)
 
         self.c_enc = nn.Sequential(
             nn.Linear(self.c_in, self.c_hidden, bias=True),
@@ -390,7 +380,6 @@ class AVAE_PoE(nn.Module):
         )
         self.px_scale_decoder = nn.Sequential(
             nn.Linear(self.c_hidden, self.c_in),
-            #nn.Softplus(),
             nn.ReLU()
         )
 
@@ -441,7 +430,6 @@ class AVAE_PoE(nn.Module):
 
         self.POE_px_scale_decoder = nn.Sequential(
             nn.Linear(self.c_hidden, self.c_in),
-            #nn.Softplus()
             nn.ReLU()
         )
 
@@ -472,9 +460,6 @@ class AVAE_PoE(nn.Module):
         ql_logv = self.l_enc_logv(hidden)
         ql = self.reparameterize(ql_m, ql_logv)
 
-        # Non-negative constraints
-        self.alpha = nn.Parameter(F.softplus(self.alpha) + self.eps)
-
         x_n = torch.log1p(x)
         hidden = self.c_enc(x_n)
         qc_m = self.c_enc_m(hidden)
@@ -482,8 +467,6 @@ class AVAE_PoE(nn.Module):
 
         hidden = self.z_enc(x_n)
         qz_m_ct = self.z_enc_m(hidden).reshape([x1.shape[0], self.c_kn, self.c_bn])
-        # qz_m_ct = (qc * qz_m_ct)
-
         qz_m = (qc * qz_m_ct).sum(axis=1)
         qz_logv_ct = self.z_enc_logv(hidden).reshape([x1.shape[0], self.c_kn, self.c_bn])
         qz_logv = (qc * qz_logv_ct).sum(axis=1)
@@ -503,8 +486,6 @@ class AVAE_PoE(nn.Module):
         )
 
     def predict_imgVAE(self, x):
-
-        # TODO: verify x numerical ranges
         # x = x * 255
         x = torch.log1p(x)
 
@@ -556,21 +537,25 @@ class AVAE_PoE(nn.Module):
         qz = inference_outputs['qz']
         ql = inference_outputs['ql']
         ql_m = inference_outputs['ql_m']
+        ql_logv = inference_outputs['ql_logv']
         img_ql = img_path_outputs['img_ql']
+        img_ql_m = img_path_outputs['img_ql_m']
+        img_ql_logv = inference_outputs['img_ql_logv']
 
         hidden = self.px_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
 
         # TODO: summation in log space is valid for PoE, both `ql` & `img_ql` are on log space, add denominator: (prior var^-1 + inference var^-1)
-        # TODO: NEED TO ADD DENOMINATOR (reference from PoE paper): PoE page 4
-        px_rate = torch.exp(ql + img_ql) * px_scale + self.eps
+        # TODO: Verify DENOMINATOR (reference from PoE paper): PoE page 4
+        ql_j = ( ql_m/torch.exp(ql_logv) + img_ql_m/torch.exp(img_ql_logv) ) / ( 1/torch.exp(ql_logv) + 1/torch.exp(img_ql_logv) )
+        
+        self._px_rate = torch.exp(ql_j) * px_scale
 
-        xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1, keepdims=True))
+        # xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1, keepdims=True))
         pc_p = self.alpha * xs_k + self.eps
-        self.px_r = nn.Parameter(F.softplus(self.px_r))
 
         return dict(
-            px_rate=px_rate,
+            px_rate=self.px_rate,
             px_r=self.px_r,
             pc_p=pc_p,
             xs_k=xs_k,
@@ -691,24 +676,6 @@ class AVAE_PoE(nn.Module):
             Dirichlet(pc_p)
         ).mean()
 
-        """
-        if (x_peri[:, 0] == 1).sum() > 0:
-            kl_divergence_c = kl(Dirichlet(qc_m[x_peri[:, 0] == 1] * self.alpha),
-                                 Dirichlet(pc_p[x_peri[:, 0] == 1])).mean()
-
-            if (x_peri[:, 0] == 0).sum() > 0:
-                if ((x_peri[:, 0] == 0) & (library[:, 0] < torch.quantile(self.win_loglib, 0.2))).sum() > 0:
-                    kl_divergence_c = kl_divergence_c + 1e-1 * kl(Dirichlet(qc_m[(x_peri[:, 0] == 0) & (
-                                library[:, 0] < torch.quantile(self.win_loglib, 0.2))] * self.alpha), Dirichlet(
-                        pc_p[(x_peri[:, 0] == 0) & (library[:, 0] < torch.quantile(self.win_loglib, 0.2))])).mean()
-                if ((x_peri[:, 0] == 0) & (library[:, 0] >= torch.quantile(self.win_loglib, 0.2))).sum() > 0:
-                    kl_divergence_c = kl_divergence_c + 1e-2 * kl(Dirichlet(qc_m[(x_peri[:, 0] == 0) & (
-                                library[:, 0] >= torch.quantile(self.win_loglib, 0.2))] * self.alpha), Dirichlet(
-                        pc_p[(x_peri[:, 0] == 0) & (library[:, 0] >= torch.quantile(self.win_loglib, 0.2))])).mean()
-        else:
-            kl_divergence_c = torch.Tensor([0.0])
-        """
-
         reconst_loss = -NegBinom(px_rate, torch.exp(px_r)).log_prob(x).sum(-1).mean()
 
         loss_exp = reconst_loss.to(device) + kl_divergence_z.to(device) + kl_divergence_c.to(device) + kl_divergence_n.to(device)
@@ -722,20 +689,19 @@ class AVAE_PoE(nn.Module):
         img_ql_logv = img_path_outputs['img_ql_logv']
         img_qc_m = img_path_outputs['img_qc_m']
 
-        kl_divergence_n_img = kl(Normal(img_ql_m, torch.sqrt(torch.exp(img_ql_logv))),
-                                 Normal(library, torch.ones_like(ql))).sum(
-            dim=1
-        ).mean()
+        kl_divergence_n_img = kl(
+            Normal(img_ql_m, torch.sqrt(torch.exp(img_ql_logv))),
+            Normal(library, torch.ones_like(ql))
+        ).sum(dim=1).mean()
 
         kl_divergence_z_img = kl(Normal(mu_img, torch.sqrt(torch.exp(logvar_img))), Normal(mean, scale)).sum(
             dim=1
         )
 
-        if (x_peri[:, 0] == 1).sum() > 0:
-            kl_divergence_c_img = kl(Dirichlet(img_qc_m[x_peri[:, 0] == 1] * self.alpha),
-                                     Dirichlet(pc_p[x_peri[:, 0] == 1])).mean()
-        else:
-            kl_divergence_c_img = torch.Tensor([0.0])
+        kl_divergence_c_img = kl(
+            Dirichlet(img_qc_m * self.alpha),
+            Dirichlet(pc_p)
+        ).mean()
 
         bce_loss_img = criterion(recon_img, adata_img)
 
@@ -755,6 +721,19 @@ class AVAE_PoE(nn.Module):
                 kl_divergence_c,
                 kl_divergence_n
                 )
+
+    @property
+    def alpha(self):
+        return F.softplus(self._alpha) + self.eps
+
+    @property
+    def px_rate(self):
+        return F.softplus(self._px_rate) + self.eps
+    
+    @property
+    def px_r(self):
+        return F.softplus(self._px_r) + self.eps
+
 
 
 def valid_model(model):
@@ -811,7 +790,7 @@ def train(
     corr_list = []
     for i, (x, xs_k, x_peri, library_i) in enumerate(dataloader):
         
-        counter +=1
+        counter += 1
         x = x.float()
         x = x.to(device)
         xs_k = xs_k.to(device)

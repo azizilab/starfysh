@@ -110,6 +110,7 @@ class VisiumArguments:
         # Retrieve & normalize signature gexp
         LOGGER.info('Retrieving & normalizing signature gene expressions...')
         self.sig_mean = self._get_sig_mean()
+        # self.sig_mean_znorm = self._znorm_sig(z_axis=self.params['z_axis'])
         self.sig_mean_znorm = self._norm_sig(z_axis=self.params['z_axis'])
         
         # Get anchor spots
@@ -258,7 +259,9 @@ class VisiumArguments:
         return sig_mean_zscore
 
     def _norm_sig(self, z_axis):
-        return self.sig_mean.apply(lambda x: x / x.mean(), axis=z_axis)
+        gexp = self.sig_mean.apply(lambda x: x / x.mean(), axis=z_axis)  # col-normalize by cell type
+        # return gexp / self.adata.X.sum(axis=1)[:,None]  # row-normalize by library size
+        return gexp
 
 
 # --------------------------------

@@ -52,7 +52,7 @@ class AVAE(nn.Module):
             ST raw expression count (dim: [S, G])
 
         gene_sig : pd.DataFrame
-            Signature gene sets for each annotated cell type
+            Normalized avg. signature expressions for each annotated cell type
 
         win_loglib : float
             Log-library size smoothed with neighboring spots
@@ -68,11 +68,12 @@ class AVAE(nn.Module):
         self.c_hidden = 256
         self.c_kn = gene_sig.shape[1]
         self.eps = 1e-5  # for r.v. w/ numerical constraints
-
-        # DEBUG: fix alpha & mute random init., rerun multiple alphas to see bias from input -> output
-        self._alpha = torch.nn.Parameter(torch.ones(self.c_kn) * 1/self.c_kn * alpha_mul)
-        # self.alpha = torch.ones(self.c_kn)*alpha_mul
-        # self.alpha = self.alpha.to(torch.device('cuda'))
+        
+        # fixed alpha initialization
+        # self._alpha = torch.nn.Parameter(torch.ones(self.c_kn)*alpha_mul) 
+        
+        # allow rand. alpha initialization w/ concentrate param.
+        self._alpha = torch.nn.Parameter(torch.rand(self.c_kn)*alpha_mul) 
 
         self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
         self.qu_m = torch.nn.Parameter(torch.randn(self.c_kn, self.c_bn), requires_grad=True)
@@ -185,6 +186,7 @@ class AVAE(nn.Module):
         self,
         inference_outputs,
         xs_k,
+        anchor_idx
     ):
         
         qz = inference_outputs['qz']
@@ -192,10 +194,10 @@ class AVAE(nn.Module):
 
         hidden = self.px_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
-
         self._px_rate = torch.exp(ql) * px_scale
         
-        #xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1,keepdims=True))
+        # DEBUG: normalize libsize during preprocessing
+        # xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1,keepdims=True))
         pc_p = self.alpha * xs_k + self.eps
 
         return dict(
@@ -252,11 +254,20 @@ class AVAE(nn.Module):
             Normal(library, torch.ones_like(ql))
         ).sum(dim=1).mean()
         
-        # TODO: should we calc. kl_divergence_c on all spots? non-anchor spots should also follow Dir.
+        # TODO: verify should we calc. kl_divergence_c on all spots? 
+        """
         kl_divergence_c = kl(
             Dirichlet(qc_m * self.alpha),
             Dirichlet(pc_p)
         ).mean()
+        """
+        if (x_peri[:,0] == 1).sum() > 0:
+            kl_divergence_c = kl(
+                Dirichlet(qc_m[x_peri[:,0] == 1]*self.alpha),
+                Dirichlet(pc_p[x_peri[:,0] == 1])
+            ).mean()
+        else:
+            kl_divergence_c = torch.Tensor([0.0])
 
         reconst_loss = -NegBinom(px_rate, torch.exp(px_r)).log_prob(x).sum(-1).mean()
         
@@ -551,7 +562,7 @@ class AVAE_PoE(nn.Module):
         
         self._px_rate = torch.exp(ql_j) * px_scale
 
-        # xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1, keepdims=True))
+        xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1, keepdims=True))
         pc_p = self.alpha * xs_k + self.eps
 
         return dict(
@@ -670,11 +681,20 @@ class AVAE_PoE(nn.Module):
             Normal(library, torch.ones_like(ql))
         ).sum(dim=1).mean()
 
-        # TODO: should we calc. kl_divergence_c on all spots? non-anchor spots should also follow Dir.
+        # TODO: verify should we calc. kl_divergence_c on all spots? 
+        """
         kl_divergence_c = kl(
             Dirichlet(qc_m * self.alpha),
             Dirichlet(pc_p)
         ).mean()
+        """
+        if (x_peri[:,0] == 1).sum() > 0:
+            kl_divergence_c = kl(
+                Dirichlet(qc_m[x_peri[:,0] == 1]*self.alpha),
+                Dirichlet(pc_p[x_peri[:,0] == 1])
+            ).mean()
+        else:
+            kl_divergence_c = torch.Tensor([0.0])
 
         reconst_loss = -NegBinom(px_rate, torch.exp(px_r)).log_prob(x).sum(-1).mean()
 
@@ -798,7 +818,7 @@ def train(
         library_i = library_i.to(device)
         inference_outputs = model.inference(x)
 
-        generative_outputs = model.generative(inference_outputs, xs_k)
+        generative_outputs = model.generative(inference_outputs, xs_k, x_peri)
 
         (loss,
          reconst_loss,
@@ -815,7 +835,14 @@ def train(
                        )
         
         optimizer.zero_grad()
+        
+        # Check for NaNs
+        if torch.isnan(loss) or any(torch.isnan(p).any() for p in model.parameters()):
+            LOGGER.warning('NaNs detected in model parameters, Skipping current epoch...')
+            continue
+        
         loss.backward()
+        optimizer.step()
         
         running_loss += loss.item()
         running_reconst +=reconst_loss.item()
@@ -823,8 +850,6 @@ def train(
         running_z +=kl_divergence_z.item()
         running_c +=kl_divergence_c.item()
         running_n +=kl_divergence_n.item()    
-        
-        optimizer.step()
 
     train_loss = running_loss / counter
     train_reconst = running_reconst / counter
@@ -990,6 +1015,7 @@ def model_eval(
 
     x_in = torch.Tensor(adata.to_df().values).to(device)
     sig_means = torch.Tensor(visium_args.sig_mean_znorm.values).to(device)
+    anchor_idx = torch.Tensor(visium_args.pure_idx).to(device)
 
     with torch.no_grad():
         inference_outputs = model.inference(x_in)
@@ -998,7 +1024,7 @@ def model_eval(
             img_outputs = model.predict_imgVAE(img_in)
             generative_outputs = model.generative(inference_outputs, sig_means, img_outputs)
         else:
-            generative_outputs = model.generative(inference_outputs, sig_means)
+            generative_outputs = model.generative(inference_outputs, sig_means, anchor_idx)
 
     try:
         px = NegBinom(
@@ -1053,6 +1079,7 @@ def model_ct_exp(
 
         x_in = torch.Tensor(adata.to_df().values).to(device)
         sig_means = torch.Tensor(visium_args.sig_mean_znorm.values).to(device)
+        anchor_idx = torch.Tensor(visium_args.pure_idx).to(device)
 
         # Get inference outputs
         inference_outputs = model.inference(x_in)
@@ -1067,7 +1094,7 @@ def model_ct_exp(
             )
             generative_outputs = model.generative(inference_outputs, sig_means, img_outputs)
         else:
-            generative_outputs = model.generative(inference_outputs, sig_means)
+            generative_outputs = model.generative(inference_outputs, sig_means, anchor_idx)
 
         px = NegBinom(
             mu=generative_outputs["px_rate"],

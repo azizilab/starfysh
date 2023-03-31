@@ -26,7 +26,6 @@ np.random.seed(0)
 
 # TODO:
 #  inherit `AVAE` (expr model) w/ `AVAE_PoE` (expr + histology model), update latest PoE model
-#  Add device as class instance
 class AVAE(nn.Module):
     """ 
     Model design
@@ -40,7 +39,8 @@ class AVAE(nn.Module):
         adata,
         gene_sig,
         win_loglib,
-        alpha_mul=1e3
+        alpha_mul=1e3,
+        device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ) -> None:
         """
         Auxiliary Variational AutoEncoder (AVAE) - Core model for
@@ -70,10 +70,11 @@ class AVAE(nn.Module):
         self.eps = 1e-5  # for r.v. w/ numerical constraints
         
         # fixed alpha initialization
-        # self._alpha = torch.nn.Parameter(torch.ones(self.c_kn)*alpha_mul) 
+        self._alpha = torch.ones(self.c_kn)*alpha_mul
+        self._alpha = self._alpha.to(device)
         
         # allow rand. alpha initialization w/ concentrate param.
-        self._alpha = torch.nn.Parameter(torch.rand(self.c_kn)*alpha_mul) 
+        # self._alpha = torch.nn.Parameter(torch.rand(self.c_kn)*alpha_mul) 
 
         self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
         self.qu_m = torch.nn.Parameter(torch.randn(self.c_kn, self.c_bn), requires_grad=True)
@@ -125,7 +126,7 @@ class AVAE(nn.Module):
         )
         self.px_scale_decoder = nn.Sequential(
                               nn.Linear(self.c_hidden,self.c_in),
-                              nn.ReLU()
+                              nn.Softmax(dim=-1)
         )
 
     def reparameterize(self, mu, log_var):
@@ -195,7 +196,7 @@ class AVAE(nn.Module):
         hidden = self.px_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
         
-        self._px_rate = torch.exp(ql) * px_scale
+        self.px_rate = torch.exp(ql) * px_scale
         xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1,keepdims=True))
         pc_p = self.alpha * xs_k + self.eps
 
@@ -249,7 +250,7 @@ class AVAE(nn.Module):
 
         # Note: here library is the smoothed, log-lib from observations
         kl_divergence_n = kl(
-            Normal(ql_m, torch.sqrt(torch.exp(ql_logv))),
+            Normal(ql_m, torch.exp(ql_logv / 2)),
             Normal(library, torch.ones_like(ql))
         ).sum(dim=1).mean()
         
@@ -287,10 +288,6 @@ class AVAE(nn.Module):
     @property
     def alpha(self):
         return F.softplus(self._alpha) + self.eps
-
-    @property
-    def px_rate(self):
-        return F.softplus(self._px_rate) + self.eps
     
     @property
     def px_r(self):
@@ -390,7 +387,7 @@ class AVAE_PoE(nn.Module):
         )
         self.px_scale_decoder = nn.Sequential(
             nn.Linear(self.c_hidden, self.c_in),
-            nn.ReLU()
+            nn.Softmax(dim=-1)
         )
 
         self.px_r_poe = torch.nn.Parameter(torch.randn(self.c_in), requires_grad=True)
@@ -559,7 +556,7 @@ class AVAE_PoE(nn.Module):
         # TODO: Verify DENOMINATOR (reference from PoE paper): PoE page 4
         ql_j = ( ql_m/torch.exp(ql_logv) + img_ql_m/torch.exp(img_ql_logv) ) / ( 1/torch.exp(ql_logv) + 1/torch.exp(img_ql_logv) )
         
-        self._px_rate = torch.exp(ql_j) * px_scale
+        self.px_rate = torch.exp(ql_j) * px_scale
         xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1, keepdims=True))
         pc_p = self.alpha * xs_k + self.eps
 
@@ -669,13 +666,13 @@ class AVAE_PoE(nn.Module):
         scale = torch.ones_like(qz_logv)
 
         kl_divergence_z = kl(
-            Normal(qz_m, torch.sqrt(torch.exp(qz_logv))),
+            Normal(qz_m, torch.exp(qz_logv / 2)),
             Normal(mean, scale)
         ).sum(dim=1).mean()
 
         # Note: here library is the smoothed, log-lib from observations
         kl_divergence_n = kl(
-            Normal(ql_m, torch.sqrt(torch.exp(ql_logv))),
+            Normal(ql_m, torch.exp(ql_logv / 2)),
             Normal(library, torch.ones_like(ql))
         ).sum(dim=1).mean()
 
@@ -744,10 +741,6 @@ class AVAE_PoE(nn.Module):
     def alpha(self):
         return F.softplus(self._alpha) + self.eps
 
-    @property
-    def px_rate(self):
-        return F.softplus(self._px_rate) + self.eps
-    
     @property
     def px_r(self):
         return F.softplus(self._px_r) + self.eps
@@ -1036,10 +1029,7 @@ def model_eval(
     # Save inference & generative outputs in adata
     for rv in inference_outputs.keys():
         val = inference_outputs[rv].detach().cpu().numpy().squeeze()
-
-        if rv == 'ql' or rv == 'ql_m':
-            adata.obsm[rv] = np.exp(val)  # transform learnt `l` to count space
-        elif "qu" not in rv and "qs" not in rv:
+        if "qu" not in rv and "qs" not in rv:
             adata.obsm[rv] = val
         else:
             adata.uns[rv] = val

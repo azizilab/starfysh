@@ -68,7 +68,7 @@ class VisiumArguments:
 
         self.params = {
             'sample_id': 'ST', 
-            'n_anchors': 60,
+            'n_anchors': 40,
             'patch_r': 13,
             'vlow': 10,
             'vhigh': 95,
@@ -110,8 +110,8 @@ class VisiumArguments:
         # Retrieve & normalize signature gexp
         LOGGER.info('Retrieving & normalizing signature gene expressions...')
         self.sig_mean = self._get_sig_mean()
-        # self.sig_mean_znorm = self._znorm_sig(z_axis=self.params['z_axis'])
-        self.sig_mean_znorm = self._norm_sig(z_axis=self.params['z_axis'])
+        self.sig_mean_znorm = self._znorm_sig(z_axis=self.params['z_axis'])
+        #self.sig_mean_znorm = self._norm_sig(z_axis=self.params['z_axis'])
         
         # Get anchor spots
         LOGGER.info('Identifying anchor spots (highly expression of specific cell-type signatures)...')
@@ -183,7 +183,7 @@ class VisiumArguments:
     def _update_anchors(self):
         """Re-calculate anchor spots given updated gene signatures"""
         self.sig_mean = self._get_sig_mean()
-        self.sig_mean_znorm = self._norm_sig(z_axis=self.params['z_axis'])
+        self.sig_mean_znorm = self._znorm_sig(z_axis=self.params['z_axis'])
         self.adata.uns['cell_types'] = list(self.gene_sig.columns)
 
         LOGGER.info('Recalculating anchor spots (highly expression of specific cell-type signatures)...')
@@ -250,18 +250,19 @@ class VisiumArguments:
         self.img_patches = imgs.reshape(imgs.shape[0], -1)
         return None
 
-    def _znorm_sig(self, z_axis, eps=1e-12):
+    def _znorm_sig(self, z_axis, eps=1e-10):
         """Z-normalize average expressions for each gene"""
         sig_mean = self.sig_mean + eps
         sig_mean_zscore = sig_mean.apply(zscore, axis=z_axis)
         sig_mean_zscore[sig_mean_zscore < 0] = 0
-        sig_mean_zscore = sig_mean_zscore.fillna(0)
         return sig_mean_zscore
-
+        
     def _norm_sig(self, z_axis):
         gexp = self.sig_mean.apply(lambda x: x / x.mean(), axis=z_axis)  # col-normalize by cell type
         # return gexp / self.adata.X.sum(axis=1)[:,None]  # row-normalize by library size
         return gexp
+    
+    
 
 
 # --------------------------------

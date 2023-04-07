@@ -69,12 +69,7 @@ class AVAE(nn.Module):
         self.c_kn = gene_sig.shape[1]
         self.eps = 1e-5  # for r.v. w/ numerical constraints
         
-        # fixed alpha initialization
-        self._alpha = torch.ones(self.c_kn)*alpha_mul
-        self._alpha = self._alpha.to(device)
-        
-        # allow rand. alpha initialization w/ concentrate param.
-        # self._alpha = torch.nn.Parameter(torch.rand(self.c_kn)*alpha_mul) 
+        self._alpha = torch.nn.Parameter(torch.ones(self.c_kn)*alpha_mul, requires_grad=True)  # init. alpha
 
         self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
         self.qu_m = torch.nn.Parameter(torch.randn(self.c_kn, self.c_bn), requires_grad=True)
@@ -146,11 +141,10 @@ class AVAE(nn.Module):
         ql_logv = self.l_enc_logv(hidden)
         ql = self.reparameterize(ql_m, ql_logv)
 
-        # x is processed by dividing the inferred library
         x_n = torch.log1p(x)
         hidden = self.c_enc(x_n)
         qc_m = self.c_enc_m(hidden)
-        qc = Dirichlet(self.alpha * qc_m + self.eps).rsample()[:,:,None]
+        qc = Dirichlet(qc_m * self.alpha + self.eps).rsample()[:,:,None]
         hidden = self.z_enc(x_n)
 
         qz_m_ct = self.z_enc_m(hidden).reshape([x_n.shape[0],self.c_kn,self.c_bn])
@@ -195,9 +189,7 @@ class AVAE(nn.Module):
 
         hidden = self.px_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
-        
         self.px_rate = torch.exp(ql) * px_scale
-        xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1,keepdims=True))
         pc_p = self.alpha * xs_k + self.eps
 
         return dict(
@@ -254,16 +246,10 @@ class AVAE(nn.Module):
             Normal(library, torch.ones_like(ql))
         ).sum(dim=1).mean()
         
-        # TODO: verify should we calc. kl_divergence_c on all spots? 
-        """
-        kl_divergence_c = kl(
-            Dirichlet(qc_m * self.alpha),
-            Dirichlet(pc_p)
-        ).mean()
-        """
+        # Only calc. kl divergence for `c` on anchor spots
         if (x_peri[:,0] == 1).sum() > 0:
             kl_divergence_c = kl(
-                Dirichlet(qc_m[x_peri[:,0] == 1]*self.alpha),
+                Dirichlet(qc_m[x_peri[:,0] == 1] * self.alpha),
                 Dirichlet(pc_p[x_peri[:,0] == 1])
             ).mean()
         else:
@@ -557,7 +543,6 @@ class AVAE_PoE(nn.Module):
         ql_j = ( ql_m/torch.exp(ql_logv) + img_ql_m/torch.exp(img_ql_logv) ) / ( 1/torch.exp(ql_logv) + 1/torch.exp(img_ql_logv) )
         
         self.px_rate = torch.exp(ql_j) * px_scale
-        xs_k = xs_k / torch.exp(ql) * torch.exp(ql.mean(axis=1, keepdims=True))
         pc_p = self.alpha * xs_k + self.eps
 
         return dict(
@@ -676,13 +661,7 @@ class AVAE_PoE(nn.Module):
             Normal(library, torch.ones_like(ql))
         ).sum(dim=1).mean()
 
-        # TODO: verify should we calc. kl_divergence_c on all spots? 
-        """
-        kl_divergence_c = kl(
-            Dirichlet(qc_m * self.alpha),
-            Dirichlet(pc_p)
-        ).mean()
-        """
+        # Only calc. kl divergence for `c` on anchor spots
         if (x_peri[:,0] == 1).sum() > 0:
             kl_divergence_c = kl(
                 Dirichlet(qc_m[x_peri[:,0] == 1]*self.alpha),

@@ -111,7 +111,7 @@ class VisiumArguments:
         LOGGER.info('Retrieving & normalizing signature gene expressions...')
         self.sig_mean = self._get_sig_mean()
         self.sig_mean_znorm = self._znorm_sig(z_axis=self.params['z_axis'])
-        #self.sig_mean_znorm = self._norm_sig(z_axis=self.params['z_axis'])
+        # self.sig_mean_znorm = self._norm_sig(z_axis=self.params['z_axis'])
         
         # Get anchor spots
         LOGGER.info('Identifying anchor spots (highly expression of specific cell-type signatures)...')
@@ -121,9 +121,7 @@ class VisiumArguments:
                                        v_high=self.params['vhigh'],
                                        n_anchor=self.params['n_anchors']
                                        )
-        self.pure_spots, self.pure_dict, self.pure_idx = anchor_info
-        # self.sig_mean_znorm *= self.pure_idx  # mask non-anchor spots
-        
+        self.pure_spots, self.pure_dict, self.pure_idx = anchor_info        
         del self.adata.raw, self.adata_norm.raw 
 
     def get_adata(self):
@@ -199,26 +197,27 @@ class VisiumArguments:
         gene_sig_exp_m = pd.DataFrame()
         adata_df = self.adata.to_df()
         for i in range(self.gene_sig.shape[1]):
+            
             # calculate avg. signature expressions from raw count
             if self.params['sig_version'] == 'raw':
                 gene_sig_exp_m[self.gene_sig.columns[i]] = np.nanmean((
                     adata_df.loc[
-                    :,
-                    np.intersect1d(
-                        self.adata.var_names,
-                        np.unique(self.gene_sig.iloc[:, i].astype(str))
-                    )
+                        :,
+                        np.intersect1d(
+                            self.adata.var_names,
+                            np.unique(self.gene_sig.iloc[:, i].astype(str))
+                        )
                     ]
                 ), axis=1)
 
-            # calculate avg. signature  expressions from log count
+            # calculate avg. signature expressions from log count
             else:
                 gene_sig_exp_m[self.gene_sig.columns[i]] = adata_df.loc[
-                                                           :,
-                                                           np.intersect1d(
-                                                               self.adata.var_names,
-                                                               np.unique(self.gene_sig.iloc[:, i].astype(str))
-                                                           )
+                                                               :,
+                                                               np.intersect1d(
+                                                                   self.adata.var_names,
+                                                                   np.unique(self.gene_sig.iloc[:, i].astype(str))
+                                                               )
                                                            ].mean(axis=1)
 
         gene_sig_exp_arr = pd.DataFrame(np.array(gene_sig_exp_m), columns=gene_sig_exp_m.columns,
@@ -253,15 +252,25 @@ class VisiumArguments:
     def _znorm_sig(self, z_axis, eps=1e-10):
         """Z-normalize average expressions for each gene"""
         sig_mean = self.sig_mean + eps
-        sig_mean_zscore = sig_mean.apply(zscore, axis=z_axis)
-        sig_mean_zscore[sig_mean_zscore < 0] = 0
-        return sig_mean_zscore
+        
+        # col-norm for each cell type: znorm + ReLU
+        gexp = sig_mean.apply(zscore, axis=z_axis) 
+        gexp[gexp < 0] = 0
+                
+        # row-norm by divided by rowSum
+        gexp = gexp.div(gexp.sum(1), axis=0)
+        gexp.fillna(1/gexp.shape[1], inplace=True)
+        
+        return gexp
         
     def _norm_sig(self, z_axis):
-        gexp = self.sig_mean.apply(lambda x: x / x.mean(), axis=z_axis)  # col-normalize by cell type
-        # return gexp / self.adata.X.sum(axis=1)[:,None]  # row-normalize by library size
+        # col-norm for each cell type: divided by mean
+        gexp = self.sig_mean.apply(lambda x: x / x.mean(), axis=z_axis)  
+
+        # row-norm by divided by rowSum
+        gexp = gexp.div(gexp.sum(1), axis=0)
+        gexp.fillna(1/gexp.shape[1], inplace=True)
         return gexp
-    
     
 
 
@@ -281,12 +290,9 @@ def init_weights(module):
 def run_starfysh(
         visium_args,
         n_repeats=3,
-        lr=0.001,
+        lr={'global': 1e-3, 'alpha': 1e-1},
         epochs=100,
-        
-        # DEBUG: test how strong alpha affects the deconvolution
         alpha_mul=1e3,
-
         poe=False,
         device=torch.device('cpu'),
         verbose=True
@@ -377,7 +383,25 @@ def run_starfysh(
         if verbose:
             LOGGER.info('Initializing model parameters...')
         model.apply(init_weights)
-        optimizer = optim.Adam(model.parameters(), lr=lr)
+        
+        # DEBUG: set larger lr for alpha
+        optimizer = optim.Adam(
+            [
+                {
+                    'params': [
+                        param 
+                        for name, param in model.named_parameters() 
+                        if name != '_alpha'
+                    ],
+                    'lr': lr['global']
+                },
+                {
+                    'params': model._alpha,
+                    'lr': lr['alpha']
+                }
+            ], 
+            lr=lr['global']
+        )
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
         
         for epoch in range(epochs):
@@ -605,10 +629,10 @@ def load_signatures(filename, adata):
 
 
 def preprocess_img(
-        data_path,
-        sample_id,
-        adata_index,
-        hchannel=False
+    data_path,
+    sample_id,
+    adata_index,
+    hchannel=False
 ):
     """
     Load and preprocess visium paired H&E image & spatial coords

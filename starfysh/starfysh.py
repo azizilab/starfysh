@@ -69,6 +69,7 @@ class AVAE(nn.Module):
         self.c_kn = gene_sig.shape[1]
         self.eps = 1e-5  # for r.v. w/ numerical constraints
         
+        self._alpha_mul = alpha_mul
         self._alpha = torch.nn.Parameter(torch.ones(self.c_kn)*alpha_mul, requires_grad=True)  # init. alpha
 
         self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
@@ -250,7 +251,7 @@ class AVAE(nn.Module):
         if (x_peri[:,0] == 1).sum() > 0:
             kl_divergence_c = kl(
                 Dirichlet(qc_m[x_peri[:,0] == 1] * self.alpha),
-                Dirichlet(pc_p[x_peri[:,0] == 1])
+                Dirichlet(pc_p[x_peri[:,0] == 1] * self._alpha_mul)
             ).mean()
         else:
             kl_divergence_c = torch.Tensor([0.0])
@@ -328,6 +329,8 @@ class AVAE_PoE(nn.Module):
         self.patch_r = patch_r
         self.c_kn = gene_sig.shape[1]
         self.eps = 1e-5  # for r.v. w/ numerical constraints
+        
+        self._alpha_mul = alpha_mul
         self._alpha = torch.nn.Parameter(torch.ones(self.c_kn) * 1/self.c_kn * alpha_mul, requires_grad=True)
 
         self.c_enc = nn.Sequential(
@@ -692,10 +695,14 @@ class AVAE_PoE(nn.Module):
             dim=1
         )
 
-        kl_divergence_c_img = kl(
-            Dirichlet(img_qc_m * self.alpha),
-            Dirichlet(pc_p)
-        ).mean()
+        # Only calc. kl divergence for `c` on anchor spots
+        if (x_peri[:,0] == 1).sum() > 0:
+            kl_divergence_c = kl(
+                Dirichlet(qc_m[x_peri[:,0] == 1] * self.alpha),
+                Dirichlet(pc_p[x_peri[:,0] == 1] * self._alpha_mul)
+            ).mean()
+        else:
+            kl_divergence_c = torch.Tensor([0.0])
 
         bce_loss_img = criterion(recon_img, adata_img)
 

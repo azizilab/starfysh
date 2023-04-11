@@ -85,17 +85,22 @@ class VisiumArguments:
         # Store cell types
         self.adata.uns['cell_types'] = list(self.gene_sig.columns)
 
-        # Update spatial information to adata if missing
-        if 'spatial' not in adata.uns_keys():
-            if self.img is None and self.scalefactor is None:  # simulation use UMAP to represent actual locations
-                self.adata.obsm['spatial'] = adata.obsm['X_umap']
-            else:
-                self._update_spatial_info(self.params['sample_id'])
-
-
         # Filter out signature genes X listed in expression matrix
         LOGGER.info('Subsetting highly variable & signature genes ...')
         self.adata, self.adata_norm = get_adata_wsig(adata, adata_norm, gene_sig)
+        
+        # Calculate UMAPs after selecting HVGs || markers
+        sc.pp.neighbors(self.adata, n_neighbors=15, n_pcs=40, use_rep='X')
+        sc.pp.neighbors(self.adata_norm, n_neighbors=15, n_pcs=40, use_rep='X')
+        sc.tl.umap(self.adata, min_dist=0.2)
+        sc.tl.umap(self.adata_norm, min_dist=0.2)
+        
+        # Update spatial information to adata if it's not appended upon data loading
+        if 'spatial' not in adata.uns_keys():
+            if self.img is None and self.scalefactor is None:  # simulation use UMAP to represent actual locations
+                self.adata.obsm['spatial'] = self.adata.obsm['X_umap']
+            else:
+                self._update_spatial_info(self.params['sample_id'])
 
         # Get smoothed library size
         LOGGER.info('Smoothing library size by taking averaging with neighbor spots...')
@@ -590,7 +595,7 @@ def load_adata(data_folder, sample_id, n_genes, multiple_data=False):
         adata.var_names.name = 'Genes'
         adata.var.drop('_index', axis=1, inplace=True)
 
-    adata_norm = preprocess(adata, n_top_genes=n_genes,multiple_data=multiple_data)
+    adata_norm = preprocess(adata, n_top_genes=n_genes, multiple_data=multiple_data)
     adata = adata[:, list(adata_norm.var_names)]
     adata.var['highly_variable'] = adata_norm.var['highly_variable']
     adata.obs = adata_norm.obs
@@ -832,8 +837,10 @@ def get_windowed_library(adata_sample, map_info, library, window_size):
     library_n = []
     for i in adata_sample.obs_names:
         window_size = window_size
-        dist_arr = np.sqrt((map_info.loc[:, 'array_col'] - map_info.loc[i, 'array_col']) ** 2 + (
-                map_info.loc[:, 'array_row'] - map_info.loc[i, 'array_row']) ** 2)
+        dist_arr = np.sqrt(
+            (map_info.loc[:, 'array_col'] - map_info.loc[i, 'array_col']) **2 +
+            (map_info.loc[:, 'array_row'] - map_info.loc[i, 'array_row']) ** 2
+        )
         library_n.append(library[dist_arr < window_size].mean())
     library_n = np.array(library_n)
     return library_n

@@ -191,7 +191,7 @@ class AVAE(nn.Module):
         hidden = self.px_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
         self.px_rate = torch.exp(ql) * px_scale
-        pc_p = self.alpha * xs_k + self.eps
+        pc_p = xs_k + self.eps
 
         return dict(
             px_rate=self.px_rate,
@@ -546,7 +546,7 @@ class AVAE_PoE(nn.Module):
         ql_j = ( ql_m/torch.exp(ql_logv) + img_ql_m/torch.exp(img_ql_logv) ) / ( 1/torch.exp(ql_logv) + 1/torch.exp(img_ql_logv) )
         
         self.px_rate = torch.exp(ql_j) * px_scale
-        pc_p = self.alpha * xs_k + self.eps
+        pc_p = xs_k + self.eps
 
         return dict(
             px_rate=self.px_rate,

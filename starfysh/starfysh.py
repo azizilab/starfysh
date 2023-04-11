@@ -57,8 +57,9 @@ class AVAE(nn.Module):
         win_loglib : float
             Log-library size smoothed with neighboring spots
 
-        alpha_mul : float
-            Dirichlet concentration parameter (DEBUG)
+        alpha_mul : float (default=1e3)
+            Multiplier of Dirichlet concentration parameter to control
+            signature prior's confidence
         """
         super().__init__()
         self.win_loglib=torch.Tensor(win_loglib)
@@ -69,9 +70,9 @@ class AVAE(nn.Module):
         self.c_kn = gene_sig.shape[1]
         self.eps = 1e-5  # for r.v. w/ numerical constraints
         
-        self._alpha_mul = alpha_mul
-        self._alpha = torch.nn.Parameter(torch.ones(self.c_kn)*alpha_mul, requires_grad=True)  # init. alpha
-
+        self.alpha = torch.ones(self.c_kn)*alpha_mul
+        self.alpha = self.alpha.to(device)
+        
         self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
         self.qu_m = torch.nn.Parameter(torch.randn(self.c_kn, self.c_bn), requires_grad=True)
         self.qu_logv = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
@@ -251,7 +252,7 @@ class AVAE(nn.Module):
         if (x_peri[:,0] == 1).sum() > 0:
             kl_divergence_c = kl(
                 Dirichlet(qc_m[x_peri[:,0] == 1] * self.alpha),
-                Dirichlet(pc_p[x_peri[:,0] == 1] * self._alpha_mul)
+                Dirichlet(pc_p[x_peri[:,0] == 1] * self.alpha)
             ).mean()
         else:
             kl_divergence_c = torch.Tensor([0.0])
@@ -272,9 +273,6 @@ class AVAE(nn.Module):
                 kl_divergence_c,
                 kl_divergence_n
                )
-    @property
-    def alpha(self):
-        return F.softplus(self._alpha) + self.eps
     
     @property
     def px_r(self):
@@ -295,7 +293,8 @@ class AVAE_PoE(nn.Module):
         gene_sig,
         patch_r,
         win_loglib,
-        alpha_mul=1e3
+        alpha_mul=1e3,
+        device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ) -> None:
         """
         Auxiliary Variational AutoEncoder (AVAE) with Joint H&E inference
@@ -315,8 +314,9 @@ class AVAE_PoE(nn.Module):
         win_loglib : float
             Log-library size smoothed with neighboring spots
 
-        alpha_mul : float
-            Dirichlet concentration param (DEBUG)
+        alpha_mul : float (default=1e3)
+            Multiplier of Dirichlet concentration parameter to control
+            signature prior's confidence
 
         """
         super(AVAE_PoE, self).__init__()
@@ -329,9 +329,8 @@ class AVAE_PoE(nn.Module):
         self.patch_r = patch_r
         self.c_kn = gene_sig.shape[1]
         self.eps = 1e-5  # for r.v. w/ numerical constraints
-        
-        self._alpha_mul = alpha_mul
-        self._alpha = torch.nn.Parameter(torch.ones(self.c_kn) * 1/self.c_kn * alpha_mul, requires_grad=True)
+        self.alpha = torch.ones(self.c_kn) * alpha_mul
+        self.alpha = self.alpha.to(device)
 
         self.c_enc = nn.Sequential(
             nn.Linear(self.c_in, self.c_hidden, bias=True),
@@ -667,8 +666,8 @@ class AVAE_PoE(nn.Module):
         # Only calc. kl divergence for `c` on anchor spots
         if (x_peri[:,0] == 1).sum() > 0:
             kl_divergence_c = kl(
-                Dirichlet(qc_m[x_peri[:,0] == 1]*self.alpha),
-                Dirichlet(pc_p[x_peri[:,0] == 1])
+                Dirichlet(qc_m[x_peri[:,0] == 1] * self.alpha),
+                Dirichlet(pc_p[x_peri[:,0] == 1] * self.alpha)
             ).mean()
         else:
             kl_divergence_c = torch.Tensor([0.0])
@@ -722,11 +721,7 @@ class AVAE_PoE(nn.Module):
                 kl_divergence_c,
                 kl_divergence_n
                 )
-
-    @property
-    def alpha(self):
-        return F.softplus(self._alpha) + self.eps
-
+    
     @property
     def px_r(self):
         return F.softplus(self._px_r) + self.eps

@@ -295,7 +295,7 @@ def init_weights(module):
 def run_starfysh(
         visium_args,
         n_repeats=3,
-        lr={'global': 1e-3, 'alpha': 1e-1},
+        lr=1e-3,
         epochs=100,
         alpha_mul=1e3,
         poe=False,
@@ -387,26 +387,9 @@ def run_starfysh(
         # Initialize model params
         if verbose:
             LOGGER.info('Initializing model parameters...')
+            
         model.apply(init_weights)
-        
-        # DEBUG: set larger lr for alpha
-        optimizer = optim.Adam(
-            [
-                {
-                    'params': [
-                        param 
-                        for name, param in model.named_parameters() 
-                        if name != '_alpha'
-                    ],
-                    'lr': lr['global']
-                },
-                {
-                    'params': model._alpha,
-                    'lr': lr['alpha']
-                }
-            ], 
-            lr=lr['global']
-        )
+        optimizer = optim.Adam(model.parameters(), lr=lr)
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
         
         for epoch in range(epochs):

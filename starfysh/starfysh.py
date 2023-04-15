@@ -39,7 +39,7 @@ class AVAE(nn.Module):
         adata,
         gene_sig,
         win_loglib,
-        alpha_mul=1e3,
+        alpha_mul=50,
         device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ) -> None:
         """

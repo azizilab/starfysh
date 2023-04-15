@@ -15,10 +15,11 @@ from starfysh import LOGGER
 
 
 class ArchetypalAnalysis:
-    # Todo: implement non-linear archetype analysis with VAE, compare explanability with linear implementation
+    # Todo: add assertion that input `adata` should be raw counts to ensure math assumptions
     def __init__(
         self,
         adata_orig,
+        n_neighbors=20,
         u=None,
         u_3d=None,
         verbose=True,
@@ -29,12 +30,16 @@ class ArchetypalAnalysis:
 
         self.adata = adata_orig.copy()
         
-        # Perform dim-reduction with PCA, select the first 30 PCs
-        sc.pp.pca(self.adata)
-        self.count = self.adata.obsm['X_pca'][:, :30]
-        # self.count = self.adata.X.A if isinstance(self.adata.X, sparse.csr_matrix) else self.adata.X
-
+        # Perform dim. reduction with PCA, select the first 30 PCs
+        if 'X_umap' in self.adata.obsm_keys():
+            del self.adata.obsm['X_umap']
+        sc.pp.normalize_total(self.adata, target_sum=1e6)
+        sc.pp.pca(self.adata, n_comps=30)
+        
+        self.count = self.adata.obsm['X_pca']
         self.n_spots = self.count.shape[0]
+        self.n_neighbors=n_neighbors
+        
         self.verbose = verbose
         self.outdir = outdir
         self.filename = filename
@@ -120,7 +125,7 @@ class ArchetypalAnalysis:
 
         # TODO: speedup with multiprocessing
         for i, k in enumerate(range(self.kmin, self.kmin+n_iters)):
-            archetype, _, _, _, ev = PCHA(X, noc=k, delta=0.1)
+            archetype, _, _, _, ev = PCHA(X, noc=k)
             evs.append(ev)
             archetypes.append(np.array(archetype).T)
             if i > 0 and ev - evs[i-1] < converge:
@@ -171,15 +176,12 @@ class ArchetypalAnalysis:
         major_idx = np.setdiff1d(np.arange(n_archetypes), list(idxs_to_remove))
         return arche_dict, major_idx
 
-    def find_archetypal_spots(self, n_neighbors=20, major=True):
+    def find_archetypal_spots(self, major=True):
         """
         Assign N-nearest-neighbor spots to each archetype as `archetypal spots` (archetype community)
 
         Parameters
         ----------
-        n_neighbors : int (default=40)
-            N nearest neighbors of each archetype for archetypal spots
-
         major : bool
             Whether to find NNs for only major archetypes
 
@@ -190,19 +192,16 @@ class ArchetypalAnalysis:
         """
         assert self.archetype is not None, "Please compute archetypes first!"
         if self.verbose:
-            LOGGER.info('Finding {} nearest neighbors for each archetype...'.format(n_neighbors))
+            LOGGER.info('Finding {} nearest neighbors for each archetype...'.format(self.n_neighbors))
 
-        nbr_dict = {}        
         indices = self.major_idx if major else np.arange(self.archetype.shape[0])
-        
-        for i in indices:
-            v = self.archetype[i]
-            X_concat = np.vstack([self.count, v])
-            nbrs = NearestNeighbors(n_neighbors=n_neighbors+1).fit(X_concat)
-            nn_graph = nbrs.kneighbors(X_concat)[1][-1, 1:]  # find NNs of archetype `v`
-            nbr_dict['arch_{}'.format(i)] = nn_graph
+        x_concat = np.vstack([self.count, self.archetype])
+        nbrs = self._get_knns(x_concat, self.n_spots+indices)
+        self.arche_df = pd.DataFrame({
+            'arch_{}'.format(idx): g
+            for (idx, g) in zip(indices, nbrs)
+        })
 
-        self.arche_df = pd.DataFrame(nbr_dict)
         return self.arche_df
 
     def find_markers(self, n_markers=30, display=False):
@@ -348,9 +347,23 @@ class ArchetypalAnalysis:
     def _get_umap(self, ndim=2, random_state=42):
         assert ndim == 2 or ndim == 3, "Invalid dimension for UMAP: {}".format(ndim)
         LOGGER.info('Calculating UMAPs for counts + Archetypes...')
-        reducer = umap.UMAP(n_components=ndim, random_state=random_state)
+        reducer = umap.UMAP(n_neighbors=self.n_neighbors+10, n_components=ndim, random_state=random_state)
         U = reducer.fit_transform(np.vstack([self.count, self.archetype]))
         return U
+
+    def _get_knns(self, x, indices):
+        assert 0 <= indices.min() < indices.max() < x.shape[0], \
+            "Invalid indices of interest to compute k-NNs"
+        nbrs = np.zeros((len(indices), self.n_neighbors), dtype=np.int32)
+        for i, index in enumerate(indices):
+            u = x[index]
+            dist = np.ones(x.shape[0])*np.inf
+            for j, v in enumerate(x):
+                if i != j and not np.isin(j, indices):
+                    dist[j] = np.linalg.norm(u-v)
+            nbrs[i] = np.argsort(dist)[:self.n_neighbors]
+
+        return nbrs
 
     def _save_fig(self, fig, lgds, default_name):
         filename = self.filename if self.filename is not None else default_name
@@ -362,7 +375,7 @@ class ArchetypalAnalysis:
             bbox_extra_artists=lgds, bbox_inches='tight',
             format='svg'
         )
-        
+
     def plot_archetypes(
         self, 
         major=True, 

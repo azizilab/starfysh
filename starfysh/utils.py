@@ -68,7 +68,7 @@ class VisiumArguments:
 
         self.params = {
             'sample_id': 'ST', 
-            'n_anchors': 60,
+            'n_anchors': 40,
             'patch_r': 13,
             'vlow': 10,
             'vhigh': 95,
@@ -85,17 +85,22 @@ class VisiumArguments:
         # Store cell types
         self.adata.uns['cell_types'] = list(self.gene_sig.columns)
 
-        # Update spatial information to adata if missing
-        if 'spatial' not in adata.uns_keys():
-            if self.img is None and self.scalefactor is None:  # simulation use UMAP to represent actual locations
-                self.adata.obsm['spatial'] = adata.obsm['X_umap']
-            else:
-                self._update_spatial_info(self.params['sample_id'])
-
-
         # Filter out signature genes X listed in expression matrix
         LOGGER.info('Subsetting highly variable & signature genes ...')
         self.adata, self.adata_norm = get_adata_wsig(adata, adata_norm, gene_sig)
+        
+        # Calculate UMAPs after selecting HVGs || markers
+        sc.pp.neighbors(self.adata, n_neighbors=15, n_pcs=40, use_rep='X')
+        sc.pp.neighbors(self.adata_norm, n_neighbors=15, n_pcs=40, use_rep='X')
+        sc.tl.umap(self.adata, min_dist=0.2)
+        sc.tl.umap(self.adata_norm, min_dist=0.2)
+        
+        # Update spatial information to adata if it's not appended upon data loading
+        if 'spatial' not in adata.uns_keys():
+            if self.img is None and self.scalefactor is None:  # simulation use UMAP to represent actual locations
+                self.adata.obsm['spatial'] = self.adata.obsm['X_umap']
+            else:
+                self._update_spatial_info(self.params['sample_id'])
 
         # Get smoothed library size
         LOGGER.info('Smoothing library size by taking averaging with neighbor spots...')
@@ -107,11 +112,12 @@ class VisiumArguments:
                                                window_size=self.params['window_size']
                                                )
 
-        # Retrieve & Z-norm signature gexp
+        # Retrieve & normalize signature gexp
         LOGGER.info('Retrieving & normalizing signature gene expressions...')
         self.sig_mean = self._get_sig_mean()
         self.sig_mean_znorm = self._znorm_sig(z_axis=self.params['z_axis'])
-
+        # self.sig_mean_znorm = self._norm_sig(z_axis=self.params['z_axis'])
+        
         # Get anchor spots
         LOGGER.info('Identifying anchor spots (highly expression of specific cell-type signatures)...')
         anchor_info = get_anchor_spots(self.adata,
@@ -120,9 +126,7 @@ class VisiumArguments:
                                        v_high=self.params['vhigh'],
                                        n_anchor=self.params['n_anchors']
                                        )
-        self.pure_spots, self.pure_dict, self.pure_idx = anchor_info
-        self.alpha_min = get_alpha_min(self.sig_mean, self.pure_dict)  # Calculate alpha mean
-
+        self.pure_spots, self.pure_dict, self.pure_idx = anchor_info        
         del self.adata.raw, self.adata_norm.raw 
 
     def get_adata(self):
@@ -198,26 +202,27 @@ class VisiumArguments:
         gene_sig_exp_m = pd.DataFrame()
         adata_df = self.adata.to_df()
         for i in range(self.gene_sig.shape[1]):
+            
             # calculate avg. signature expressions from raw count
             if self.params['sig_version'] == 'raw':
                 gene_sig_exp_m[self.gene_sig.columns[i]] = np.nanmean((
                     adata_df.loc[
-                    :,
-                    np.intersect1d(
-                        self.adata.var_names,
-                        np.unique(self.gene_sig.iloc[:, i].astype(str))
-                    )
+                        :,
+                        np.intersect1d(
+                            self.adata.var_names,
+                            np.unique(self.gene_sig.iloc[:, i].astype(str))
+                        )
                     ]
                 ), axis=1)
 
-            # calculate avg. signature  expressions from log count
+            # calculate avg. signature expressions from log count
             else:
                 gene_sig_exp_m[self.gene_sig.columns[i]] = adata_df.loc[
-                                                           :,
-                                                           np.intersect1d(
-                                                               self.adata.var_names,
-                                                               np.unique(self.gene_sig.iloc[:, i].astype(str))
-                                                           )
+                                                               :,
+                                                               np.intersect1d(
+                                                                   self.adata.var_names,
+                                                                   np.unique(self.gene_sig.iloc[:, i].astype(str))
+                                                               )
                                                            ].mean(axis=1)
 
         gene_sig_exp_arr = pd.DataFrame(np.array(gene_sig_exp_m), columns=gene_sig_exp_m.columns,
@@ -249,13 +254,29 @@ class VisiumArguments:
         self.img_patches = imgs.reshape(imgs.shape[0], -1)
         return None
 
-    def _znorm_sig(self, z_axis, eps=1e-12):
+    def _znorm_sig(self, z_axis, eps=1e-10):
         """Z-normalize average expressions for each gene"""
         sig_mean = self.sig_mean + eps
-        sig_mean_zscore = sig_mean.apply(zscore, axis=z_axis)
-        sig_mean_zscore[sig_mean_zscore < 0] = 0
-        sig_mean_zscore = sig_mean_zscore.fillna(0)
-        return sig_mean_zscore
+        
+        # col-norm for each cell type: znorm + ReLU
+        gexp = sig_mean.apply(zscore, axis=z_axis) 
+        gexp[gexp < 0] = 0
+                
+        # row-norm by divided by rowSum
+        gexp = gexp.div(gexp.sum(1), axis=0)
+        gexp.fillna(1/gexp.shape[1], inplace=True)
+        
+        return gexp
+        
+    def _norm_sig(self, z_axis):
+        # col-norm for each cell type: divided by mean
+        gexp = self.sig_mean.apply(lambda x: x / x.mean(), axis=z_axis)  
+
+        # row-norm by divided by rowSum
+        gexp = gexp.div(gexp.sum(1), axis=0)
+        gexp.fillna(1/gexp.shape[1], inplace=True)
+        return gexp
+    
 
 
 # --------------------------------
@@ -264,8 +285,6 @@ class VisiumArguments:
 
 def init_weights(module):
     if type(module) == nn.Linear:
-        # torch.nn.init.xavier_normal(module.weight)
-        # torch.nn.init.kaiming_normal_(module.weight)
         torch.nn.init.kaiming_uniform_(module.weight)
 
     elif type(module) == nn.BatchNorm1d:
@@ -276,24 +295,16 @@ def init_weights(module):
 def run_starfysh(
         visium_args,
         n_repeats=3,
-        lr=0.001,
+        lr=1e-3,
         epochs=100,
-        patience=10,
-
-        # DEBUG: test how strong alpha affects the deconvolution
         alpha_mul=1e3,
-
         poe=False,
         device=torch.device('cpu'),
         verbose=True
 ):
     """
     Wrapper to run starfysh deconvolution.
-
-        Note: adding early-stopping mechanism evaluated by loss c
-        - early-stopping with patience=10
-        - choose best among 3 rerun
-
+    
     Parameters
     ----------
     visium_args : VisiumArguments
@@ -306,9 +317,6 @@ def run_starfysh(
     epochs : int
         Max. number of iterations
 
-    patience : int
-        Max. counts for early-stopping if q(c) doesn't drop
-
     poe : bool
         Whether to perform inference with Poe w/ image integration
 
@@ -320,9 +328,7 @@ def run_starfysh(
     loss : np.ndarray
         Training losses
     """
-
     np.random.seed(0)
-    max_patience = patience
 
     # Loading parameters
     adata = visium_args.adata
@@ -348,8 +354,6 @@ def run_starfysh(
     for i in range(n_repeats):
         if verbose:
             LOGGER.info(" ===  Restart Starfysh {0} === \n".format(i + 1))
-
-        patience = max_patience
         best_loss_c = np.inf
 
         if poe:
@@ -358,9 +362,7 @@ def run_starfysh(
                 gene_sig=sig_mean_znorm,
                 patch_r=visium_args.params['patch_r'],
                 win_loglib=win_loglib,
-
                 alpha_mul=alpha_mul,
-
             )
             # Update patched & flattened image patches
             visium_args._update_img_patches(trainset)
@@ -369,13 +371,10 @@ def run_starfysh(
                 adata=adata,
                 gene_sig=sig_mean_znorm,
                 win_loglib=win_loglib,
-
                 alpha_mul=alpha_mul,
-
             )
-            
-        model = model.to(device)
 
+        model = model.to(device)
         loss_dict = {
             'reconst': [],
             'c': [],
@@ -388,30 +387,19 @@ def run_starfysh(
         # Initialize model params
         if verbose:
             LOGGER.info('Initializing model parameters...')
+            
         model.apply(init_weights)
         optimizer = optim.Adam(model.parameters(), lr=lr)
-
-        # TODO: test scheduler vs. early stopping
-        # scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
+        scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
         
         for epoch in range(epochs):
-            if patience == 0:
-                loss_c_list[i] = best_loss_c
-                if verbose:
-                    LOGGER.info('Saving best-performing model; Early stopping...')
-                break
-
             result = train_func(model, trainloader, device, optimizer)
             torch.cuda.empty_cache()
 
             loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n, corr_list = result
-
             if loss_c < best_loss_c:
-                patience = max_patience
                 models[i] = model
                 best_loss_c = loss_c
-            else:
-                patience -= 1
 
             torch.cuda.empty_cache()
 
@@ -422,17 +410,16 @@ def run_starfysh(
             loss_dict['c'].append(loss_c)
             loss_dict['n'].append(loss_n)
 
-            if (epoch + 1) % 10 == 0 or patience == 0:
-                if verbose:
-                    LOGGER.info("Epoch[{}/{}], train_loss: {:.4f}, train_reconst: {:.4f}, train_u: {:.4f},train_z: {:.4f},train_c: {:.4f},train_n: {:.4f}".format(
-                        epoch + 1, epochs, loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n)
-                    )
-
-            # scheduler.step()
+            if (epoch + 1) % 10 == 0 and verbose:
+                LOGGER.info("Epoch[{}/{}], train_loss: {:.4f}, train_reconst: {:.4f}, train_u: {:.4f},train_z: {:.4f},train_c: {:.4f},train_n: {:.4f}".format(
+                    epoch + 1, epochs, loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n)
+                )
+            scheduler.step()
 
         losses.append(loss_dict)
-
+        loss_c_list[i] = best_loss_c
         if verbose:
+            LOGGER.info('Saving the best-performance model...')
             LOGGER.info(" === Finished training === \n")
 
     idx = np.argmin(loss_c_list)
@@ -591,7 +578,7 @@ def load_adata(data_folder, sample_id, n_genes, multiple_data=False):
         adata.var_names.name = 'Genes'
         adata.var.drop('_index', axis=1, inplace=True)
 
-    adata_norm = preprocess(adata, n_top_genes=n_genes,multiple_data=multiple_data)
+    adata_norm = preprocess(adata, n_top_genes=n_genes, multiple_data=multiple_data)
     adata = adata[:, list(adata_norm.var_names)]
     adata.var['highly_variable'] = adata_norm.var['highly_variable']
     adata.obs = adata_norm.obs
@@ -630,10 +617,10 @@ def load_signatures(filename, adata):
 
 
 def preprocess_img(
-        data_path,
-        sample_id,
-        adata_index,
-        hchannel=False
+    data_path,
+    sample_id,
+    adata_index,
+    hchannel=False
 ):
     """
     Load and preprocess visium paired H&E image & spatial coords
@@ -833,8 +820,10 @@ def get_windowed_library(adata_sample, map_info, library, window_size):
     library_n = []
     for i in adata_sample.obs_names:
         window_size = window_size
-        dist_arr = np.sqrt((map_info.loc[:, 'array_col'] - map_info.loc[i, 'array_col']) ** 2 + (
-                map_info.loc[:, 'array_row'] - map_info.loc[i, 'array_row']) ** 2)
+        dist_arr = np.sqrt(
+            (map_info.loc[:, 'array_col'] - map_info.loc[i, 'array_col']) **2 +
+            (map_info.loc[:, 'array_row'] - map_info.loc[i, 'array_row']) ** 2
+        )
         library_n.append(library[dist_arr < window_size].mean())
     library_n = np.array(library_n)
     return library_n

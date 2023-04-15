@@ -38,9 +38,9 @@ class VisiumDataset(Dataset):
         )
 
         return (sample,
-                torch.Tensor(self.gexp.iloc[idx, :]), # z-normed signature exprs
-                torch.Tensor(self.anchor_idx[idx, :]), # anchors
-                torch.Tensor(self.library_n[idx,None]), # library size
+                torch.Tensor(self.gexp.iloc[idx, :]),  # normalized signature exprs
+                torch.Tensor(self.anchor_idx[idx, :]),  # anchors
+                torch.Tensor(self.library_n[idx,None]),  # library size
                )
 
 

@@ -8,7 +8,7 @@ nb_requirements = [
     'nbformat>=5.1.3',
     'notebook>=6.4.11',
     'jupyter>=7.0.0',
-    'jupyterlab>=3.4.3'
+    'jupyterlab>=3.4.3',
     'ipython>=7.27.0',
 ]
 
@@ -28,9 +28,9 @@ setup(
         "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
     ],
-    extras_require={
-        'notebooks': nb_requirements,
-        'dev': open('dev-requirements.txt').read().splitlines(),
-    }
+    #extras_require={
+    ###    'notebooks': nb_requirements,
+        #'dev': open('dev-requirements.txt').read().splitlines(),
+    #}
 )
 

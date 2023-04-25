@@ -359,7 +359,7 @@ class ArchetypalAnalysis:
             u = x[index]
             dist = np.ones(x.shape[0])*np.inf
             for j, v in enumerate(x):
-                if i != j and not np.isin(j, indices):
+                if i != j and j < self.n_spots:
                     dist[j] = np.linalg.norm(u-v)
             nbrs[i] = np.argsort(dist)[:self.n_neighbors]
 

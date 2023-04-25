@@ -264,7 +264,7 @@ class AVAE(nn.Module):
         kl_divergence_z = kl_divergence_z.to(device)
         kl_divergence_c = kl_divergence_c.to(device)
         kl_divergence_n = kl_divergence_n.to(device)
-        loss = reconst_loss + kl_divergence_u + kl_divergence_z+ kl_divergence_c + kl_divergence_n + 
+        loss = reconst_loss + kl_divergence_u + kl_divergence_z+ kl_divergence_c + kl_divergence_n 
 
         return (loss,
                 reconst_loss,

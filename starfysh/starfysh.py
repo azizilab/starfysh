@@ -88,7 +88,6 @@ class AVAE(nn.Module):
                                 nn.BatchNorm1d(self.c_kn, momentum=0.01,eps=0.001),
                                 nn.Softmax(dim=-1)
         )
-        #self.c_enc_logv = nn.Linear(self.c_hidden, self.c_hidden)
         
         self.l_enc = nn.Sequential(
                                 nn.Linear(self.c_in, self.c_hidden, bias=True),
@@ -102,7 +101,6 @@ class AVAE(nn.Module):
         self.l_enc_logv = nn.Linear(self.c_hidden, 1)
         
         # neural network f1 to get the z, p(z|x), f1(x,\phi_1)=[z_m,torch.exp(z_logv)]
-        
         self.z_enc = nn.Sequential(
                                 #nn.Linear(self.c_in+self.c_kn, self.c_hidden, bias=True),
                                 nn.Linear(self.c_in, self.c_hidden, bias=True),
@@ -191,7 +189,7 @@ class AVAE(nn.Module):
 
         hidden = self.px_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
-        self.px_rate = torch.exp(ql) * px_scale
+        self.px_rate = torch.exp(ql) * px_scale + self.eps
         pc_p = xs_k + self.eps
 
         return dict(
@@ -249,6 +247,7 @@ class AVAE(nn.Module):
         ).sum(dim=1).mean()
         
         # Only calc. kl divergence for `c` on anchor spots
+        # DEBUG: test what if we set constraint on all spots?
         if (x_peri[:,0] == 1).sum() > 0:
             kl_divergence_c = kl(
                 Dirichlet(qc_m[x_peri[:,0] == 1] * self.alpha),
@@ -256,6 +255,12 @@ class AVAE(nn.Module):
             ).mean()
         else:
             kl_divergence_c = torch.Tensor([0.0])
+        """
+        kl_divergence_c = kl(
+            Dirichlet(qc_m * self.alpha),
+            Dirichlet(pc_p * self.alpha)
+        ).mean()
+        """
 
         reconst_loss = -NegBinom(px_rate, torch.exp(px_r)).log_prob(x).sum(-1).mean()
         
@@ -341,15 +346,12 @@ class AVAE_PoE(nn.Module):
         self.c_enc_m = nn.Sequential(
             nn.Linear(self.c_hidden, self.c_kn, bias=True),
             nn.BatchNorm1d(self.c_kn, momentum=0.01, eps=0.001),
-            # nn.ReLU(),
             nn.Softmax()
         )
         self.l_enc = nn.Sequential(
             nn.Linear(self.c_in, self.c_hidden, bias=True),
             nn.BatchNorm1d(self.c_hidden, momentum=0.01, eps=0.001),
             nn.ReLU(),
-            # nn.Linear(self.c_hidden, 1, bias=True),
-            # nn.ReLU(),
         )
 
         self.l_enc_m = nn.Linear(self.c_hidden, 1)
@@ -357,7 +359,6 @@ class AVAE_PoE(nn.Module):
 
         # neural network f1 to get the z, p(z|x), f1(x,\phi_1)=[z_m,torch.exp(z_logv)]
         self.z_enc = nn.Sequential(
-            # nn.Linear(self.c_in+self.c_kn, self.c_hidden, bias=True),
             nn.Linear(self.c_in, self.c_hidden, bias=True),
             nn.BatchNorm1d(self.c_hidden, momentum=0.01, eps=0.001),
             nn.ReLU(),
@@ -986,7 +987,7 @@ def model_eval(
     model = model.to(device)
 
     x_in = torch.Tensor(adata.to_df().values).to(device)
-    sig_means = torch.Tensor(visium_args.sig_mean_znorm.values).to(device)
+    sig_means = torch.Tensor(visium_args.sig_mean_norm.values).to(device)
     anchor_idx = torch.Tensor(visium_args.pure_idx).to(device)
 
     with torch.no_grad():
@@ -1047,7 +1048,7 @@ def model_ct_exp(
         model.eval()
 
         x_in = torch.Tensor(adata.to_df().values).to(device)
-        sig_means = torch.Tensor(visium_args.sig_mean_znorm.values).to(device)
+        sig_means = torch.Tensor(visium_args.sig_mean_norm.values).to(device)
         anchor_idx = torch.Tensor(visium_args.pure_idx).to(device)
 
         # Get inference outputs

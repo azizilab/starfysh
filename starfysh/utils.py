@@ -4,20 +4,15 @@ import json
 import numpy as np
 import pandas as pd
 import scanpy as sc
-# import logging
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from sklearn.neighbors import NearestNeighbors
-from sklearn.linear_model import LinearRegression
-from scipy.stats import zscore
-from scipy.sparse import csr_matrix
+from scipy.stats import median_abs_deviation
 from torch.utils.data import DataLoader
 
 import sys
-# import histomicstk as htk
 from skimage import io
 
 # Module import
@@ -48,7 +43,6 @@ class VisiumArguments:
     img_metadata : dict
         Spatial information metadata (histology image, coordinates, scalefactor)
     """
-
     def __init__(
         self,
         adata,
@@ -70,11 +64,9 @@ class VisiumArguments:
             'sample_id': 'ST', 
             'n_anchors': 40,
             'patch_r': 13,
-            'vlow': 10,
-            'vhigh': 95,
-            'sig_version': 'raw',
-            'window_size': 30,
-            'z_axis': 0,
+            'sig_version': 'gene_score',
+            'signif_level': 3,
+            'window_size': 3,
         }
 
         # Update parameters for library smoothing & anchor spot identification
@@ -82,12 +74,17 @@ class VisiumArguments:
             if k in self.params.keys():
                 self.params[k] = v
 
+        # Center expression for gene score calculation
+        adata_scale = self.adata_norm.copy()
+        sc.pp.scale(adata_scale)
+        
         # Store cell types
         self.adata.uns['cell_types'] = list(self.gene_sig.columns)
 
         # Filter out signature genes X listed in expression matrix
         LOGGER.info('Subsetting highly variable & signature genes ...')
         self.adata, self.adata_norm = get_adata_wsig(adata, adata_norm, gene_sig)
+        self.adata_scale = adata_scale[:, adata.var_names]
         
         # Calculate UMAPs after selecting HVGs || markers
         sc.pp.neighbors(self.adata, n_neighbors=15, n_pcs=40, use_rep='X')
@@ -115,17 +112,29 @@ class VisiumArguments:
         # Retrieve & normalize signature gexp
         LOGGER.info('Retrieving & normalizing signature gene expressions...')
         self.sig_mean = self._get_sig_mean()
-        self.sig_mean_znorm = self._znorm_sig(z_axis=self.params['z_axis'])
-        # self.sig_mean_znorm = self._norm_sig(z_axis=self.params['z_axis'])
-        
+
+        # normalized by dividing by the sum of expression
+        if self.params['sig_version'] == 'norm':
+            self.sig_mean_norm = self._norm_sig()
+
+        # normalized by `sc.tl.score_genes` (subtracting w/ binned ref. gexp)
+        elif self.params['sig_version'] == 'gene_score':
+            self.sig_mean_norm = self._calc_gene_scores()
+
+        else:
+            raise ValueError('Signature mean gexp normalozation [{}] not implemented'.format(self.params['sig_version']))
+                    
         # Get anchor spots
         LOGGER.info('Identifying anchor spots (highly expression of specific cell-type signatures)...')
-        anchor_info = get_anchor_spots(self.adata,
-                                       self.sig_mean_znorm,
-                                       v_low=self.params['vlow'],
-                                       v_high=self.params['vhigh'],
-                                       n_anchor=self.params['n_anchors']
-                                       )
+        anchor_info = self._compute_anchors()
+
+        # row-norm
+        self.sig_mean, score = self.sig_mean_norm.copy(), self.sig_mean_norm.copy()
+        score[score < 0] = 0
+        score = score.div(score.sum(1), axis=0)
+        score.fillna(1/score.shape[1], inplace=True)
+        self.sig_mean_norm = score
+        
         self.pure_spots, self.pure_dict, self.pure_idx = anchor_info        
         del self.adata.raw, self.adata_norm.raw 
 
@@ -135,10 +144,22 @@ class VisiumArguments:
 
     def get_anchors(self):
         """Return indices of anchor spots for each cell type"""
-        anchors_df = pd.DataFrame.from_dict(self.pure_dict, orient='columns')
+        anchors_df = pd.DataFrame.from_dict(self.pure_dict, orient='index')
+        anchors_df = anchors_df.transpose()
+        
+        # Check whether empty anchors detected for any factor
+        empty_indices = np.where(
+            (~pd.isna(anchors_df)).sum(0) == 0
+        )[0]
+        
+        if len(empty_indices) > 0:
+            raise ValueError("Cell type(s) {} has no anchors significantly enriched for its signatures,"
+                             "please lower outlier stats `signif_level` or try zscore-based signature"
+                             "scoring method (`sig_version` = 'zscore' or 'zscore_raw'".format(anchors_df.columns[empty_indices].to_list()))
+        
         return anchors_df.applymap(
             lambda x:
-            np.where(self.adata.obs.index == x)[0][0]
+            -1 if x is None else np.where(self.adata.obs.index == x)[0][0]
         )
 
     def get_img_patches(self):
@@ -183,51 +204,106 @@ class VisiumArguments:
         self._update_anchors()
         return None
 
+    # --- Private methods ---
+    def _compute_anchors(self):
+        """
+        Calculate top `anchor_spots` significantly enriched for given cell type(s)
+        determined by gene set scores from signatures
+        """
+        score_type = self.params['sig_version']
+        score_df = self.sig_mean_norm
+        signif_level = self.params['signif_level']
+        n_anchor = self.params['n_anchors']
+        n_cell_types = self.sig_mean_norm.shape[1]
+
+        if score_type == 'gene_score':
+            pure_spots = []
+            for i, cell_type in enumerate(score_df.columns):
+
+                # find anchors by outlier detection
+                score = score_df.values[:, i] - (1/(n_cell_types-1)) * np.delete(score_df.values, i, axis=1).sum(1)
+
+                # modified z-score
+                # med = np.median(score)
+                # mad = median_abs_deviation(score)
+                # modified_zscore = 0.6745 * (score-med)/mad
+                # top_score = score_df.iloc[:, i][modified_zscore > signif_level]
+
+                # z-score
+                sd = score.std()
+                top_score = score_df.iloc[:, i][score > signif_level*sd]
+
+                if len(top_score) <= n_anchor:
+                    pure_spots.append(top_score.index)
+                else:
+                    pure_spots.append(top_score.index[(-top_score.values).argsort()[:n_anchor]])
+
+        else:
+            top_expr_spots = (-score_df.values).argsort(axis=0)[:n_anchor, :]
+            pure_spots = np.transpose(score_df.index[top_expr_spots])
+
+        # top_expr_spots = (-score_df.values).argsort(axis=0)[:n_anchor, :]
+        # pure_spots = np.transpose(score_df.index[top_expr_spots])
+
+        pure_dict = {
+            ct: spot
+            for (spot, ct) in zip(pure_spots, score_df.columns)
+        }
+
+        pure_indices = np.zeros([score_df.shape[0], 1])
+        idx = [np.where(score_df.index == i)[0][0] 
+               for i in sorted({x for v in pure_dict.values() for x in v})]
+        pure_indices[idx] = 1
+        return pure_spots, pure_dict, pure_indices   
+    
     def _update_anchors(self):
         """Re-calculate anchor spots given updated gene signatures"""
         self.sig_mean = self._get_sig_mean()
-        self.sig_mean_znorm = self._znorm_sig(z_axis=self.params['z_axis'])
+
+        # normalized by dividing by the sum of expression
+        if self.params['sig_version'] == 'norm':
+            self.sig_mean_norm = self._norm_sig(rownorm=False, scale=False)
+
+        # normalized by `sc.tl.score_genes` (subtracting w/ binned ref. gexp)
+        elif self.params['sig_version'] == 'gene_score':
+            self.sig_mean_norm = self._calc_gene_scores()
+
+        else:
+            raise ValueError('Signature mean gexp normalozation [{}] not implemented'.format(self.params['sig_version']))
+
         self.adata.uns['cell_types'] = list(self.gene_sig.columns)
 
         LOGGER.info('Recalculating anchor spots (highly expression of specific cell-type signatures)...')
-        anchor_info = get_anchor_spots(self.adata,
-                                       self.sig_mean_znorm,
-                                       v_low=self.params['vlow'],
-                                       v_high=self.params['vhigh'],
-                                       n_anchor=self.params['n_anchors']
-                                       )
+        anchor_info = self._compute_anchors()
+
+        # row-norm
+        self.sig_mean, score = self.sig_mean_norm.copy(), self.sig_mean_norm.copy()
+        score[score < 0] = 0
+        score = score.div(score.sum(1), axis=0)
+        score.fillna(1/score.shape[1], inplace=True)
+        self.sig_mean_norm = score
+        
         self.pure_spots, self.pure_dict, self.pure_idx = anchor_info
-
+              
     def _get_sig_mean(self):
-        gene_sig_exp_m = pd.DataFrame()
-        adata_df = self.adata.to_df()
-        for i in range(self.gene_sig.shape[1]):
+        sig_mean_expr = pd.DataFrame()
+        cnt_df = self.adata_norm.to_df()
+                    
+        # Calculate avg. signature expressions for each cell type
+        for i, cell_type in enumerate(self.gene_sig.columns):
+            sigs = np.intersect1d(cnt_df.columns, self.gene_sig.iloc[:, i].astype(str))
             
-            # calculate avg. signature expressions from raw count
-            if self.params['sig_version'] == 'raw':
-                gene_sig_exp_m[self.gene_sig.columns[i]] = np.nanmean((
-                    adata_df.loc[
-                        :,
-                        np.intersect1d(
-                            self.adata.var_names,
-                            np.unique(self.gene_sig.iloc[:, i].astype(str))
-                        )
-                    ]
-                ), axis=1)
-
-            # calculate avg. signature expressions from log count
+            if len(sigs) == 0:
+                raise ValueError("Empty signatures for {},"
+                                 "please double check your `gene_sig` input or set a higher"
+                                 "`n_gene` threshold upon dataloading".format(cell_type))
+                
             else:
-                gene_sig_exp_m[self.gene_sig.columns[i]] = adata_df.loc[
-                                                               :,
-                                                               np.intersect1d(
-                                                                   self.adata.var_names,
-                                                                   np.unique(self.gene_sig.iloc[:, i].astype(str))
-                                                               )
-                                                           ].mean(axis=1)
-
-        gene_sig_exp_arr = pd.DataFrame(np.array(gene_sig_exp_m), columns=gene_sig_exp_m.columns,
-                                        index=self.adata.obs_names)
-        return gene_sig_exp_arr
+                sig_mean_expr[cell_type] = cnt_df.loc[:, sigs].mean(axis=1)
+        
+        sig_mean_expr.index = self.adata.obs_names
+        sig_mean_expr.columns = self.gene_sig.columns
+        return sig_mean_expr
 
     def _update_spatial_info(self, sample_id):
         """Update paired spatial information to ST adata"""
@@ -254,30 +330,28 @@ class VisiumArguments:
         self.img_patches = imgs.reshape(imgs.shape[0], -1)
         return None
 
-    def _znorm_sig(self, z_axis, eps=1e-10):
-        """Z-normalize average expressions for each gene"""
-        sig_mean = self.sig_mean + eps
-        
-        # col-norm for each cell type: znorm + ReLU
-        gexp = sig_mean.apply(zscore, axis=z_axis) 
-        gexp[gexp < 0] = 0
-                
-        # row-norm by divided by rowSum
-        gexp = gexp.div(gexp.sum(1), axis=0)
-        gexp.fillna(1/gexp.shape[1], inplace=True)
-        
-        return gexp
-        
-    def _norm_sig(self, z_axis):
+    def _norm_sig(self):
         # col-norm for each cell type: divided by mean
-        gexp = self.sig_mean.apply(lambda x: x / x.mean(), axis=z_axis)  
-
-        # row-norm by divided by rowSum
-        gexp = gexp.div(gexp.sum(1), axis=0)
-        gexp.fillna(1/gexp.shape[1], inplace=True)
+        gexp = self.sig_mean.apply(lambda x: x / x.mean(), axis=0)  
         return gexp
-    
+        
+    def _calc_gene_scores(self):
+        """Calculate gene set enrichment scores for each signature sets"""
+        adata = self.adata_scale.copy()
+        #adata = self.adata_norm.copy()
+        for cell_type in self.gene_sig.columns:
+            sig = self.gene_sig[cell_type][~pd.isna(self.gene_sig[cell_type])].to_list()
+            sc.tl.score_genes(adata, sig, score_name=cell_type+'_score')
+            
+        gsea_df = adata.obs[[cell_type+'_score' for cell_type in self.gene_sig.columns]]
+        gsea_df.columns = self.gene_sig.columns
 
+        # row-norm
+        # gsea_df[gsea_df < 0] = 0
+        # gsea_df = gsea_df.div(gsea_df.sum(1), axis=0)
+        # gsea_df.fillna(1/gsea_df.shape[1], inplace=True)
+
+        return gsea_df
 
 # --------------------------------
 # Running starfysh with 3-restart
@@ -297,7 +371,7 @@ def run_starfysh(
         n_repeats=3,
         lr=1e-3,
         epochs=100,
-        alpha_mul=1e3,
+        alpha_mul=50,
         poe=False,
         device=torch.device('cpu'),
         verbose=True
@@ -333,7 +407,7 @@ def run_starfysh(
     # Loading parameters
     adata = visium_args.adata
     win_loglib = visium_args.win_loglib
-    gene_sig, sig_mean_znorm = visium_args.gene_sig, visium_args.sig_mean_znorm
+    gene_sig, sig_mean_norm = visium_args.gene_sig, visium_args.sig_mean_norm
 
     models = [None] * n_repeats
     losses = []
@@ -359,7 +433,7 @@ def run_starfysh(
         if poe:
             model = AVAE_PoE(
                 adata=adata,
-                gene_sig=sig_mean_znorm,
+                gene_sig=sig_mean_norm,
                 patch_r=visium_args.params['patch_r'],
                 win_loglib=win_loglib,
                 alpha_mul=alpha_mul,
@@ -369,7 +443,7 @@ def run_starfysh(
         else:
             model = AVAE(
                 adata=adata,
-                gene_sig=sig_mean_znorm,
+                gene_sig=sig_mean_norm,
                 win_loglib=win_loglib,
                 alpha_mul=alpha_mul,
             )
@@ -488,10 +562,15 @@ def preprocess(adata_raw,
 
     if verbose:
         LOGGER.info('Preprocessing1: delete the mt and rp')
-    adata.var['mt'] = adata.var_names.str.startswith('MT-')
-    adata.var['rb'] = np.logical_or(
-        adata.var_names.str.startswith('RPS'),
-        adata.var_names.str.startswith('RPL')
+        
+    adata.var['mt'] = np.logical_or(
+        adata.var_names.str.startswith('MT-'),
+        adata.var_names.str.startswith('mt-')
+    )
+    adata.var['rb'] = (
+        adata.var_names.str.startswith('RPS') |
+        adata.var_names.str.startswith('RPL') |
+        adata.var_names.str.startswith('rp-')
     )
 
     sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], inplace=True)
@@ -712,15 +791,11 @@ def get_adata_wsig(adata, adata_norm, gene_sig):
     """
     Select intersection of HVGs from dataset & signature annotations
     """
-    unique_sigs = np.unique(np.hstack(
-        gene_sig.apply(
-            lambda x:
-            pd.unique(x[~pd.isna(x)])
-        )
-    ))
-    genes_to_keep = np.intersect1d(
-        np.union1d(adata.var_names[adata.var.highly_variable], unique_sigs),
-        adata.var_names
+    hvgs = adata.var_names[adata.var.highly_variable]
+    unique_sigs = np.unique(gene_sig.values[~pd.isna(gene_sig)])
+    genes_to_keep = np.union1d(
+        hvgs,
+        np.intersect1d(adata.var_names, unique_sigs)
     )
     return adata[:, genes_to_keep], adata_norm[:, genes_to_keep]
 
@@ -734,65 +809,6 @@ def filter_gene_sig(gene_sig, adata_df):
                 if adata_df.loc[:, gene].sum() < 0:
                     gene_sig.iloc[i, j] = 'NaN'
     return gene_sig
-
-
-def get_anchor_spots(
-        adata_sample,
-        sig_mean,
-        v_low=20,
-        v_high=95,
-        n_anchor=40
-):
-    """
-    Calculate the top `anchor spot` enriched for the given cell type
-    (determined by normalized expression values from each signature)
-
-    Parameters
-    ----------
-        adata_sample: sc.Anndata
-            ST raw count
-
-        v_low : int
-            the low threshold to filter high-quality spots
-
-        v_high: int
-            the high threshold to filter high-quality spots
-
-        n_anchor: int
-            # anchor spots per cell type
-
-    Returns
-    -------
-    pure_spots : np.ndarray
-        anchor spot indices per cell type (dim: [S, n_anchor])
-
-    pre_dict : dict
-        Cell-type -> Anchor spots
-
-    adata_pure : np.ndarray
-        Binary indicators of anchor spots (dim: [S, n_anchor])
-    """
-    highq_spots = (((adata_sample.to_df() > 0).sum(axis=1) > np.percentile((adata_sample.to_df() > 0).sum(axis=1), v_low))  &
-                   ((adata_sample.to_df()).sum(axis=1) > np.percentile((adata_sample.to_df()).sum(axis=1), v_low))          &
-                   ((adata_sample.to_df() > 0).sum(axis=1) < np.percentile((adata_sample.to_df() > 0).sum(axis=1), v_high)) &
-                   ((adata_sample.to_df()).sum(axis=1) < np.percentile((adata_sample.to_df()).sum(axis=1), v_high))
-                   )
-
-    pure_spots = np.transpose(
-        sig_mean.loc[highq_spots, :].index[
-            (-np.array(sig_mean.loc[highq_spots, :])).argsort(axis=0)[:n_anchor, :]
-        ]
-    )
-    pure_dict = {
-        ct: spot
-        for (spot, ct) in zip(pure_spots, sig_mean.columns)
-    }
-
-    adata_pure = np.zeros([adata_sample.n_obs, 1])
-    adata_pure_idx = [np.where(adata_sample.obs_names == i)[0][0] for i in
-                      sorted({x for v in pure_dict.values() for x in v})]
-    adata_pure[adata_pure_idx] = 1
-    return pure_spots, pure_dict, adata_pure
 
 
 def get_umap(adata_sample, display=False):

@@ -230,7 +230,7 @@ class AVAE(nn.Module):
 
         kl_divergence_u = kl(
             Normal(qu_m, torch.exp(qu_logv / 2)),
-            Normal(torch.zeros_like(qu_m), torch.ones_like(qu_m))
+            Normal(torch.zeros_like(qu_m), torch.ones_like(qu_m) * 10)
         ).sum(dim=1).mean()
 
         mean_pz = (qu.unsqueeze(0) * qc).sum(axis=1)

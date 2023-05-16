@@ -371,6 +371,7 @@ def run_starfysh(
         n_repeats=3,
         lr=1e-3,
         epochs=100,
+        batch_size=32,
         alpha_mul=50,
         poe=False,
         device=torch.device('cpu'),
@@ -421,7 +422,7 @@ def run_starfysh(
         train_func = train
 
     trainset = dl_func(adata=adata, args=visium_args)
-    trainloader = DataLoader(trainset, batch_size=32, shuffle=True)
+    trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
 
     # Running Starfysh with multiple starts
     LOGGER.info('Running Starfysh with {} restarts, choose the model with best parameters...'.format(n_repeats))
@@ -437,6 +438,7 @@ def run_starfysh(
                 patch_r=visium_args.params['patch_r'],
                 win_loglib=win_loglib,
                 alpha_mul=alpha_mul,
+                batch_size=batch_size,
             )
             # Update patched & flattened image patches
             visium_args._update_img_patches(trainset)
@@ -446,6 +448,7 @@ def run_starfysh(
                 gene_sig=sig_mean_norm,
                 win_loglib=win_loglib,
                 alpha_mul=alpha_mul,
+                batch_size=batch_size,
             )
 
         model = model.to(device)

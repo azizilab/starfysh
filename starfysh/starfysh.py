@@ -40,6 +40,7 @@ class AVAE(nn.Module):
         gene_sig,
         win_loglib,
         alpha_mul=50,
+        batch_size=32,
         device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ) -> None:
         """
@@ -63,8 +64,8 @@ class AVAE(nn.Module):
         """
         super().__init__()
         self.win_loglib=torch.Tensor(win_loglib)
-        
-        self.c_in = adata.shape[1] # c_in : Num. input features (# input genes)
+
+        self.c_in = adata.shape[1]  # c_in : Num. input features (# input genes)
         self.c_bn = 10  # c_bn : latent number, numbers of bottle-necks
         self.c_hidden = 256
         self.c_kn = gene_sig.shape[1]
@@ -72,6 +73,10 @@ class AVAE(nn.Module):
         
         self.alpha = torch.ones(self.c_kn)*alpha_mul
         self.alpha = self.alpha.to(device)
+
+        # DEBUG: set up non-informative, sparse Dirichlet prior for non-anchors
+        self.pc_na = torch.ones(batch_size, self.c_kn) * 0.2
+        self.pc_na = self.pc_na.to(device)
         
         self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
         self.qu_m = torch.nn.Parameter(torch.randn(self.c_kn, self.c_bn), requires_grad=True)
@@ -228,9 +233,13 @@ class AVAE(nn.Module):
         px_r = generative_outputs["px_r"]
         pc_p = generative_outputs["pc_p"]
 
+
+        # Regularization terms
+        pu_m = torch.zeros_like(qu_m)
+        pu_std = torch.ones_like(qu_logv) * 10
         kl_divergence_u = kl(
             Normal(qu_m, torch.exp(qu_logv / 2)),
-            Normal(torch.zeros_like(qu_m), torch.ones_like(qu_m))
+            Normal(pu_m, pu_std)
         ).sum(dim=1).mean()
 
         mean_pz = (qu.unsqueeze(0) * qc).sum(axis=1)
@@ -240,28 +249,28 @@ class AVAE(nn.Module):
             Normal(mean_pz, std_pz)
         ).sum(dim=1).mean()
 
-        # Note: here library is the smoothed, log-lib from observations
         kl_divergence_n = kl(
             Normal(ql_m, torch.exp(ql_logv / 2)),
             Normal(library, torch.ones_like(ql))
         ).sum(dim=1).mean()
-        
-        # Only calc. kl divergence for `c` on anchor spots
-        # DEBUG: test what if we set constraint on all spots?
-        if (x_peri[:,0] == 1).sum() > 0:
-            kl_divergence_c = kl(
-                Dirichlet(qc_m[x_peri[:,0] == 1] * self.alpha),
-                Dirichlet(pc_p[x_peri[:,0] == 1] * self.alpha)
-            ).mean()
-        else:
-            kl_divergence_c = torch.Tensor([0.0])
-        """
-        kl_divergence_c = kl(
-            Dirichlet(qc_m * self.alpha),
-            Dirichlet(pc_p * self.alpha)
-        ).mean()
-        """
 
+        # DEBUG: test what if we set uninformative but sparse uniform Dirichlet for non-anchors
+        kl_divergence_c = 0.0
+        anchor_indices = x_peri[:, 0] == 1
+        na_indices = x_peri[:, 0] == 0
+        if anchor_indices.sum() > 0:
+            kl_divergence_c += kl(
+                Dirichlet(qc_m[anchor_indices] * self.alpha),
+                Dirichlet(pc_p[anchor_indices] * self.alpha)
+            ).mean()
+        if na_indices.sum() > 0:
+            pc_na = self.pc_na[:na_indices.shape[0]]  # edge condition: last batch w/ shape < batch-size
+            kl_divergence_c += kl(
+                Dirichlet(qc_m[na_indices] * self.alpha),
+                Dirichlet(pc_na[na_indices])
+            ).mean()
+
+        # Reconstruction term
         reconst_loss = -NegBinom(px_rate, torch.exp(px_r)).log_prob(x).sum(-1).mean()
         
         reconst_loss = reconst_loss.to(device)
@@ -298,7 +307,8 @@ class AVAE_PoE(nn.Module):
         gene_sig,
         patch_r,
         win_loglib,
-        alpha_mul=1e3,
+        alpha_mul=50,
+        batch_size=32,
         device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ) -> None:
         """

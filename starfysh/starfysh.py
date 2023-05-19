@@ -41,6 +41,10 @@ class AVAE(nn.Module):
         win_loglib,
         alpha_mul=50,
         batch_size=32,
+
+        # DEBUG: whether to regularize non-anchors?
+        reg_nonanchors=True,
+
         device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ) -> None:
         """
@@ -70,11 +74,14 @@ class AVAE(nn.Module):
         self.c_hidden = 256
         self.c_kn = gene_sig.shape[1]
         self.eps = 1e-5  # for r.v. w/ numerical constraints
+        self.device = device
         
         self.alpha = torch.ones(self.c_kn)*alpha_mul
         self.alpha = self.alpha.to(device)
 
         # DEBUG: set up non-informative, sparse Dirichlet prior for non-anchors
+        # test whether to regularize non-anchors
+        self.reg_na = reg_nonanchors
         self.pc_na = torch.ones(batch_size, self.c_kn) * 0.2
         self.pc_na = self.pc_na.to(device)
         
@@ -255,7 +262,7 @@ class AVAE(nn.Module):
         ).sum(dim=1).mean()
 
         # DEBUG: test what if we set uninformative but sparse uniform Dirichlet for non-anchors
-        kl_divergence_c = 0.0
+        kl_divergence_c = torch.tensor([0.0]).to(self.device)
         anchor_indices = x_peri[:, 0] == 1
         na_indices = x_peri[:, 0] == 0
         if anchor_indices.sum() > 0:
@@ -263,12 +270,13 @@ class AVAE(nn.Module):
                 Dirichlet(qc_m[anchor_indices] * self.alpha),
                 Dirichlet(pc_p[anchor_indices] * self.alpha)
             ).mean()
-        if na_indices.sum() > 0:
+        if na_indices.sum() > 0 and self.reg_na:
             pc_na = self.pc_na[:na_indices.shape[0]]  # edge condition: last batch w/ shape < batch-size
             kl_divergence_c += kl(
                 Dirichlet(qc_m[na_indices] * self.alpha),
                 Dirichlet(pc_na[na_indices])
             ).mean()
+
 
         # Reconstruction term
         reconst_loss = -NegBinom(px_rate, torch.exp(px_r)).log_prob(x).sum(-1).mean()

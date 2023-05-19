@@ -129,11 +129,8 @@ class VisiumArguments:
         anchor_info = self._compute_anchors()
 
         # row-norm
-        self.sig_mean, score = self.sig_mean_norm.copy(), self.sig_mean_norm.copy()
-        score[score < 0] = 0
-        score = score.div(score.sum(1), axis=0)
-        score.fillna(1/score.shape[1], inplace=True)
-        self.sig_mean_norm = score
+        self.sig_mean_norm[self.sig_mean_norm < 0] = 0
+        self.sig_mean_norm.fillna(1/self.sig_mean_norm.shape[1], inplace=True)
         
         self.pure_spots, self.pure_dict, self.pure_idx = anchor_info        
         del self.adata.raw, self.adata_norm.raw 
@@ -277,12 +274,9 @@ class VisiumArguments:
         anchor_info = self._compute_anchors()
 
         # row-norm
-        self.sig_mean, score = self.sig_mean_norm.copy(), self.sig_mean_norm.copy()
-        score[score < 0] = 0
-        score = score.div(score.sum(1), axis=0)
-        score.fillna(1/score.shape[1], inplace=True)
-        self.sig_mean_norm = score
-        
+        self.sig_mean_norm[self.sig_mean_norm < 0] = 0
+        self.sig_mean_norm.fillna(1/self.sig_mean_norm.shape[1], inplace=True)
+
         self.pure_spots, self.pure_dict, self.pure_idx = anchor_info
               
     def _get_sig_mean(self):
@@ -373,6 +367,7 @@ def run_starfysh(
         epochs=100,
         batch_size=32,
         alpha_mul=50,
+        reg_nonanchors=True,  # DEBUG: whether to regularize for non-anchors
         poe=False,
         device=torch.device('cpu'),
         verbose=True
@@ -449,6 +444,7 @@ def run_starfysh(
                 win_loglib=win_loglib,
                 alpha_mul=alpha_mul,
                 batch_size=batch_size,
+                reg_nonanchors=reg_nonanchors
             )
 
         model = model.to(device)

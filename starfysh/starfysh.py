@@ -44,6 +44,7 @@ class AVAE(nn.Module):
 
         # DEBUG: whether to regularize non-anchors?
         reg_nonanchors=True,
+        test_prior = 0.2,
 
         device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ) -> None:
@@ -82,7 +83,8 @@ class AVAE(nn.Module):
         # DEBUG: set up non-informative, sparse Dirichlet prior for non-anchors
         # test whether to regularize non-anchors
         self.reg_na = reg_nonanchors
-        self.pc_na = torch.ones(batch_size, self.c_kn) * 0.2
+        self.pc_na = torch.ones(batch_size, self.c_kn) * test_prior # test_prior = 0.2
+
         self.pc_na = self.pc_na.to(device)
         
         self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
@@ -317,6 +319,7 @@ class AVAE_PoE(nn.Module):
         win_loglib,
         alpha_mul=50,
         batch_size=32,
+        reg_nonanchors=True,
         device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ) -> None:
         """
@@ -354,6 +357,18 @@ class AVAE_PoE(nn.Module):
         self.eps = 1e-5  # for r.v. w/ numerical constraints
         self.alpha = torch.ones(self.c_kn) * alpha_mul
         self.alpha = self.alpha.to(device)
+        
+        
+        self.reg_na = reg_nonanchors
+        self.pc_na = torch.ones(batch_size, self.c_kn) * 0.1
+        self.pc_na = self.pc_na.to(device)
+        
+        self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
+        
+        self.qu_m = torch.nn.Parameter(torch.randn(self.c_kn, self.c_bn), requires_grad=True)
+        
+        self.qu_logv = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
+
 
         self.c_enc = nn.Sequential(
             nn.Linear(self.c_in, self.c_hidden, bias=True),
@@ -364,7 +379,7 @@ class AVAE_PoE(nn.Module):
         self.c_enc_m = nn.Sequential(
             nn.Linear(self.c_hidden, self.c_kn, bias=True),
             nn.BatchNorm1d(self.c_kn, momentum=0.01, eps=0.001),
-            nn.Softmax()
+            nn.Softmax(dim=-1)
         )
         self.l_enc = nn.Sequential(
             nn.Linear(self.c_in, self.c_hidden, bias=True),
@@ -415,7 +430,7 @@ class AVAE_PoE(nn.Module):
         self.img_c_enc_m = nn.Sequential(
             nn.Linear(self.c_hidden, self.c_kn, bias=True),
             nn.BatchNorm1d(self.c_kn, momentum=0.01, eps=0.001),
-            nn.Softmax()
+            nn.Softmax(dim=-1)
         )
 
         self.imgVAE_z_enc = nn.Sequential(
@@ -434,9 +449,7 @@ class AVAE_PoE(nn.Module):
                                         )
 
         # PoE
-        self.POE_z_fc = nn.Linear(self.c_bn, self.c_hidden)
-
-        # neural network g to get the x_m and x_v, p(x|z), g(z,\phi_3)=[x_m,x_v]
+        #self.POE_z_fc = nn.Linear(self.c_bn, self.c_hidden)
         self.POE_z_fc = nn.Sequential(
             nn.Linear(self.c_bn, self.c_hidden, bias=True),
             nn.ReLU(),
@@ -452,6 +465,12 @@ class AVAE_PoE(nn.Module):
             nn.BatchNorm1d(self.patch_r * self.patch_r * 4 * 3, momentum=0.01, eps=0.001),
             # nn.ReLU(),
         )
+        
+        self.img_qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
+        
+        self.img_qu_m = torch.nn.Parameter(torch.randn(self.c_kn, self.c_bn), requires_grad=True)
+        
+        self.img_qu_logv = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
 
     def reparameterize(self, mu, log_var):
         """
@@ -468,8 +487,8 @@ class AVAE_PoE(nn.Module):
         # verify whether mul. w/ alpha for q(c|x)
 
         # l is inferred from logrithmized x
-        x1 = torch.log1p(x)
-        hidden = self.l_enc(x1)
+        x_n = torch.log1p(x)
+        hidden = self.l_enc(x_n)
         ql_m = self.l_enc_m(hidden)
         ql_logv = self.l_enc_logv(hidden)
         ql = self.reparameterize(ql_m, ql_logv)
@@ -480,12 +499,23 @@ class AVAE_PoE(nn.Module):
         qc = Dirichlet(self.alpha * qc_m + self.eps).rsample()[:, :, None]
 
         hidden = self.z_enc(x_n)
-        qz_m_ct = self.z_enc_m(hidden).reshape([x1.shape[0], self.c_kn, self.c_bn])
-        qz_m = (qc * qz_m_ct).sum(axis=1)
-        qz_logv_ct = self.z_enc_logv(hidden).reshape([x1.shape[0], self.c_kn, self.c_bn])
-        qz_logv = (qc * qz_logv_ct).sum(axis=1)
-
+        
+        
+        qz_m_ct = self.z_enc_m(hidden).reshape([x_n.shape[0], self.c_kn, self.c_bn])
+        qz_m_ct = qc * qz_m_ct
+        qz_m = qz_m_ct.sum(axis=1)
+        #qz_m = (qc * qz_m_ct).sum(axis=1)
+        qz_logv_ct = self.z_enc_logv(hidden).reshape([x_n.shape[0], self.c_kn, self.c_bn])
+        qz_logv_ct = (qc * qz_logv_ct)
+        qz_logv = qz_logv_ct.sum(axis=1)
         qz = self.reparameterize(qz_m, qz_logv)
+        #qz_logv = (qc * qz_logv_ct).sum(axis=1)
+        
+        qu_m = self.qu_m
+        qu_logv = self.qu_logv
+        qu = self.reparameterize(qu_m, qu_logv)
+
+        #qz = self.reparameterize(qz_m, qz_logv)
         return dict(
             qc_m=qc_m,
             qc=qc,
@@ -496,7 +526,12 @@ class AVAE_PoE(nn.Module):
             qz=qz,
             ql_m=ql_m,
             ql_logv=ql_logv,
-            ql=ql
+            ql=ql,
+            qu_m=qu_m,
+            qu_logv=qu_logv,
+            qu=qu,
+            qs_logm=self.qs_logm,
+            
         )
 
     def predict_imgVAE(self, x):
@@ -511,17 +546,27 @@ class AVAE_PoE(nn.Module):
         hidden = self.img_c_enc(x)
         img_qc_m = self.img_c_enc_m(hidden)
         img_qc = Dirichlet(self.alpha * img_qc_m + self.eps).rsample()[:, :, None]
-
         hidden = self.imgVAE_z_enc(x)
+        
+        
         img_qz_m_ct = self.imgVAE_mu(hidden).reshape([x.shape[0], self.c_kn, self.c_bn])
         # img_qz_m_ct = (img_qc * img_qz_m_ct)
-        img_qz_m = (img_qc * img_qz_m_ct).sum(axis=1)
+        # img_qz_m = (img_qc * img_qz_m_ct).sum(axis=1)
+        img_qz_m_ct = (img_qc * img_qz_m_ct)
+        img_qz_m = img_qz_m_ct.sum(axis=1)
 
         img_qz_logv_ct = self.imgVAE_logvar(hidden).reshape([x.shape[0], self.c_kn, self.c_bn])
         # img_qz_logv_ct = (img_qc * img_qz_logv_ct)
-        img_qz_logv = (img_qc * img_qz_logv_ct).sum(axis=1)
-
+        #img_qz_logv = (img_qc * img_qz_logv_ct).sum(axis=1)
+        img_qz_logv_ct = (img_qc * img_qz_logv_ct)
+        img_qz_logv = img_qz_logv_ct.sum(axis=1)
         img_qz = self.reparameterize(img_qz_m, img_qz_logv)
+
+        #img_qz = self.reparameterize(img_qz_m, img_qz_logv)
+        
+        img_qu_m = self.img_qu_m
+        img_qu_logv = self.img_qu_logv
+        img_qu = self.reparameterize(img_qu_m, img_qu_logv)
 
         hidden = self.imgVAE_z_fc(img_qz)
         reconstruction = self.imgVAE_dec(hidden)
@@ -535,7 +580,11 @@ class AVAE_PoE(nn.Module):
                     img_qc_m=img_qc_m,
                     img_ql_m=img_ql_m,
                     img_ql_logv=img_ql_logv,
-                    img_ql=img_ql
+                    img_ql=img_ql,
+                    img_qu_m=img_qu_m,
+                    img_qu_logv=img_qu_logv,
+                    img_qu=img_qu,
+                    img_qs_logm=self.img_qs_logm,
                     )
 
     def generative(
@@ -554,7 +603,7 @@ class AVAE_PoE(nn.Module):
         ql_logv = inference_outputs['ql_logv']
         img_ql = img_path_outputs['img_ql']
         img_ql_m = img_path_outputs['img_ql_m']
-        img_ql_logv = inference_outputs['img_ql_logv']
+        img_ql_logv = img_path_outputs['img_ql_logv']
 
         hidden = self.px_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
@@ -563,8 +612,9 @@ class AVAE_PoE(nn.Module):
         # TODO: Verify DENOMINATOR (reference from PoE paper): PoE page 4
         ql_j = ( ql_m/torch.exp(ql_logv) + img_ql_m/torch.exp(img_ql_logv) ) / ( 1/torch.exp(ql_logv) + 1/torch.exp(img_ql_logv) )
         
-        self.px_rate = torch.exp(ql_j) * px_scale
-        pc_p = xs_k + self.eps
+        self.px_rate = torch.exp(ql) * px_scale + self.eps
+        
+        pc_p = xs_k + self.eps#
 
         return dict(
             px_rate=self.px_rate,
@@ -641,10 +691,16 @@ class AVAE_PoE(nn.Module):
 
         qc_m = inference_outputs["qc_m"]
         qc = inference_outputs["qc"]
+        
+        qs_logm = self.qs_logm
+        
+        qu = inference_outputs["qu"]
+        qu_m = inference_outputs["qu_m"]
+        qu_logv = inference_outputs["qu_logv"]
 
         qz_m = inference_outputs["qz_m"]
         qz_logv = inference_outputs["qz_logv"]
-        qz = inference_outputs["qz"]
+        #qz = inference_outputs["qz"]
 
         ql_m = inference_outputs["ql_m"]
         ql_logv = inference_outputs['ql_logv']
@@ -667,13 +723,21 @@ class AVAE_PoE(nn.Module):
 
         Loss_IBJ = (torch.sum(reconst_loss_poe_rna) + bce_loss_poe_img) + \
                    beta * (-0.5 * torch.sum(1 + logvar_poe - mu_poe.pow(2) - logvar_poe.exp()))
-
-        mean = torch.zeros_like(qz_m)
-        scale = torch.ones_like(qz_logv)
+        
+        kl_divergence_u = kl(
+            Normal(qu_m, torch.exp(qu_logv / 2)),
+            Normal(torch.zeros_like(qu_m), torch.ones_like(qu_m)*10)
+        ).sum(dim=1).mean()
+        
+        
+        mean_pz = (qu.unsqueeze(0) * qc).sum(axis=1)
+        std_pz = (torch.exp(qs_logm / 2).unsqueeze(0) * qc).sum(axis=1)
+        #mean = torch.zeros_like(qz_m)
+        #scale = torch.ones_like(qz_logv)
 
         kl_divergence_z = kl(
             Normal(qz_m, torch.exp(qz_logv / 2)),
-            Normal(mean, scale)
+            Normal(mean_pz, std_pz)
         ).sum(dim=1).mean()
 
         # Note: here library is the smoothed, log-lib from observations
@@ -683,59 +747,93 @@ class AVAE_PoE(nn.Module):
         ).sum(dim=1).mean()
 
         # Only calc. kl divergence for `c` on anchor spots
-        if (x_peri[:,0] == 1).sum() > 0:
-            kl_divergence_c = kl(
-                Dirichlet(qc_m[x_peri[:,0] == 1] * self.alpha),
-                Dirichlet(pc_p[x_peri[:,0] == 1] * self.alpha)
+        
+        kl_divergence_c = torch.tensor([0.0]).to(device)
+        anchor_indices = x_peri[:, 0] == 1
+        na_indices = x_peri[:, 0] == 0
+        if anchor_indices.sum() > 0:
+            kl_divergence_c += kl(
+                Dirichlet(qc_m[anchor_indices] * self.alpha),
+                Dirichlet(pc_p[anchor_indices] * self.alpha)
             ).mean()
-        else:
-            kl_divergence_c = torch.Tensor([0.0])
+        if na_indices.sum() > 0 and self.reg_na:
+            pc_na = self.pc_na[:na_indices.shape[0]]  # edge condition: last batch w/ shape < batch-size
+            kl_divergence_c += kl(
+                Dirichlet(qc_m[na_indices] * self.alpha),
+                Dirichlet(pc_na[na_indices])
+            ).mean()
 
         reconst_loss = -NegBinom(px_rate, torch.exp(px_r)).log_prob(x).sum(-1).mean()
+        
+        
 
-        loss_exp = reconst_loss.to(device) + kl_divergence_z.to(device) + kl_divergence_c.to(device) + kl_divergence_n.to(device)
+        loss_exp = reconst_loss.to(device) + kl_divergence_u.to(device)  + kl_divergence_z.to(device) + kl_divergence_c.to(device) + kl_divergence_n.to(device)
 
-        mu_img = img_path_outputs['img_z_mu']
-        logvar_img = img_path_outputs['img_z_logv']
+        ## loss for images
+        img_z_mu = img_path_outputs['img_z_mu']
+        img_z_logv = img_path_outputs['img_z_logv']
         recon_img = img_path_outputs['reconstruction']
         img_qc = img_path_outputs['img_qc']
         img_ql = img_path_outputs['img_ql']
         img_ql_m = img_path_outputs['img_ql_m']
         img_ql_logv = img_path_outputs['img_ql_logv']
         img_qc_m = img_path_outputs['img_qc_m']
+        
+        img_qs_logm = self.img_qs_logm
+        img_qu = img_path_outputs["img_qu"]
+        img_qu_m = img_path_outputs["img_qu_m"]
+        img_qu_logv = img_path_outputs["img_qu_logv"]
+        
+        kl_divergence_u_img = kl(
+            Normal(img_qu_m, torch.exp(img_qu_logv / 2)),
+            Normal(torch.zeros_like(img_qu_m), torch.ones_like(img_qu_m))
+        ).sum(dim=1).mean()
+        
+        img_mean_pz = (img_qu.unsqueeze(0) * img_qc).sum(axis=1)
+        img_std_pz = (torch.exp(img_qs_logm / 2).unsqueeze(0) * img_qc).sum(axis=1)
+        
+        kl_divergence_z_img = kl(Normal(img_z_mu, torch.sqrt(torch.exp(img_z_logv/2))), Normal(img_mean_pz, img_std_pz)).sum(
+            dim=1
+        ).mean()
 
         kl_divergence_n_img = kl(
-            Normal(img_ql_m, torch.sqrt(torch.exp(img_ql_logv))),
+            Normal(img_ql_m, torch.sqrt(torch.exp(img_ql_logv/2))),
             Normal(library, torch.ones_like(ql))
         ).sum(dim=1).mean()
-
-        kl_divergence_z_img = kl(Normal(mu_img, torch.sqrt(torch.exp(logvar_img))), Normal(mean, scale)).sum(
-            dim=1
-        )
-
-        # Only calc. kl divergence for `c` on anchor spots
-        if (x_peri[:,0] == 1).sum() > 0:
-            kl_divergence_c = kl(
-                Dirichlet(qc_m[x_peri[:,0] == 1] * self.alpha),
-                Dirichlet(pc_p[x_peri[:,0] == 1] * self._alpha_mul)
+        
+        kl_divergence_c_img = torch.tensor([0.0]).to(device)
+        
+        if anchor_indices.sum() > 0:
+            kl_divergence_c_img += kl(
+                Dirichlet(img_qc_m[anchor_indices] * self.alpha),
+                Dirichlet(pc_p[anchor_indices] * self.alpha)
             ).mean()
-        else:
-            kl_divergence_c = torch.Tensor([0.0])
+        if na_indices.sum() > 0 and self.reg_na:
+            pc_na = self.pc_na[:na_indices.shape[0]]  # edge condition: last batch w/ shape < batch-size
+            kl_divergence_c_img += kl(
+                Dirichlet(img_qc_m[na_indices] * self.alpha),
+                Dirichlet(pc_na[na_indices])
+            ).mean()
 
+        
         bce_loss_img = criterion(recon_img, adata_img)
-
+        
         bce_loss_img = bce_loss_img.to(device)
         kl_divergence_z_img = kl_divergence_z_img.to(device)
         kl_divergence_n_img = kl_divergence_n_img.to(device)
         kl_divergence_c_img = kl_divergence_c_img.to(device)
+        kl_divergence_u_img = kl_divergence_u_img.to(device)
 
-        loss_img = torch.sum(bce_loss_img + kl_divergence_z_img + kl_divergence_n_img + kl_divergence_c_img)
+        loss_img = torch.sum(bce_loss_img + kl_divergence_z_img + kl_divergence_n_img + kl_divergence_c_img + kl_divergence_u_img)
 
         Loss_IBM = (loss_exp + loss_img)
         loss = Loss_IBJ + alpha_c * Loss_IBM
+        
+
 
         return (loss,
                 reconst_loss,
+                kl_divergence_u,
                 kl_divergence_z,
                 kl_divergence_c,
                 kl_divergence_n
@@ -754,7 +852,7 @@ def valid_model(model):
     x_valid = torch.Tensor(np.array(adata_sample_filter.to_df()))
     x_valid = x_valid.to(device)
     gene_sig_exp_valid = torch.Tensor(np.array(gene_sig_exp_m)).to(device)
-    library = torch.log(x_valid.sum(1)).unsqueeze(1)
+    #library = torch.log(x_valid.sum(1)).unsqueeze(1)
 
     inference_outputs =  model.inference(x_valid)
     generative_outputs = model.generative(inference_outputs, gene_sig_exp_valid)
@@ -769,8 +867,7 @@ def valid_model(model):
     px_rate = generative_outputs["px_rate"].detach().numpy()
     ql = inference_outputs["ql"].detach().numpy()
     ql_m = inference_outputs["ql_m"].detach().numpy()
-    px = NegBinom(generative_outputs["px_rate"], torch.exp(generative_outputs["px_r"])).sample().detach().numpy()
-    
+    px = NegBinom(generative_outputs["px_rate"], torch.exp(generative_outputs["px_r"])).sample().detach().numpy()   
 
     corr_map_qcm = np.zeros([3,3])
     #corr_map_genesig = np.zeros([3,3])
@@ -866,6 +963,7 @@ def train_poe(
     running_z = 0.0
     running_c = 0.0
     running_n = 0.0
+    running_u = 0.0
     running_reconst = 0.0
     counter = 0
     corr_list = []
@@ -904,6 +1002,7 @@ def train_poe(
 
         (loss,
          reconst_loss,
+         kl_divergence_u,
          kl_divergence_z,
          kl_divergence_c,
          kl_divergence_n
@@ -926,6 +1025,7 @@ def train_poe(
         running_z += kl_divergence_z.item()
         running_c += kl_divergence_c.item()
         running_n += kl_divergence_n.item()
+        running_u += kl_divergence_u.item()
 
         optimizer.step()
 
@@ -933,10 +1033,11 @@ def train_poe(
 
     train_loss = running_loss / counter
     train_reconst = running_reconst / counter
-    train_u = 0  # TMP, to be deleted after updating PoE model with u->c->z->x
+    #train_u = 0  # TMP, to be deleted after updating PoE model with u->c->z->x
     train_z = running_z / counter
     train_c = running_c / counter
     train_n = running_n / counter
+    train_u = running_u / counter
 
     return train_loss, train_reconst, train_u, train_z, train_c, train_n, corr_list
 

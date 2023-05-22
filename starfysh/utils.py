@@ -55,7 +55,7 @@ class VisiumArguments:
         self.adata = adata
         self.adata_norm = adata_norm
         self.gene_sig = gene_sig
-        self.map_info = img_metadata['map_info']
+        self.map_info = img_metadata['map_info'].iloc[:,:4].astype(float)
         self.img = img_metadata['img']
         self.img_patches = None 
         self.scalefactor = img_metadata['scalefactor']
@@ -103,6 +103,8 @@ class VisiumArguments:
         LOGGER.info('Smoothing library size by taking averaging with neighbor spots...')
         log_lib = np.log1p(self.adata.X.sum(1))
         self.log_lib = np.squeeze(np.asarray(log_lib)) if log_lib.ndim > 1 else log_lib
+        
+        
         self.win_loglib = get_windowed_library(self.adata,
                                                self.map_info,
                                                self.log_lib,
@@ -130,6 +132,7 @@ class VisiumArguments:
 
         # row-norm
         self.sig_mean_norm[self.sig_mean_norm < 0] = 0
+        self.sig_mean_norm = self.sig_mean_norm.div(self.sig_mean_norm.sum(1),axis=0)
         self.sig_mean_norm.fillna(1/self.sig_mean_norm.shape[1], inplace=True)
         
         self.pure_spots, self.pure_dict, self.pure_idx = anchor_info        
@@ -219,7 +222,7 @@ class VisiumArguments:
 
                 # find anchors by outlier detection
                 score = score_df.values[:, i] - (1/(n_cell_types-1)) * np.delete(score_df.values, i, axis=1).sum(1)
-
+                
                 # modified z-score
                 # med = np.median(score)
                 # mad = median_abs_deviation(score)
@@ -229,6 +232,7 @@ class VisiumArguments:
                 # z-score
                 sd = score.std()
                 top_score = score_df.iloc[:, i][score > signif_level*sd]
+                top_score = top_score[top_score.index]                            
 
                 if len(top_score) <= n_anchor:
                     pure_spots.append(top_score.index)
@@ -276,7 +280,6 @@ class VisiumArguments:
         # row-norm
         self.sig_mean_norm[self.sig_mean_norm < 0] = 0
         self.sig_mean_norm.fillna(1/self.sig_mean_norm.shape[1], inplace=True)
-
         self.pure_spots, self.pure_dict, self.pure_idx = anchor_info
               
     def _get_sig_mean(self):
@@ -362,6 +365,7 @@ def init_weights(module):
 
 def run_starfysh(
         visium_args,
+        test_prior = 0.2,
         n_repeats=3,
         lr=1e-3,
         epochs=100,
@@ -444,7 +448,8 @@ def run_starfysh(
                 win_loglib=win_loglib,
                 alpha_mul=alpha_mul,
                 batch_size=batch_size,
-                reg_nonanchors=reg_nonanchors
+                reg_nonanchors=reg_nonanchors,
+                test_prior=test_prior
             )
 
         model = model.to(device)
@@ -833,6 +838,7 @@ def get_simu_map_info(umap_plot):
 
 def get_windowed_library(adata_sample, map_info, library, window_size):
     library_n = []
+
     for i in adata_sample.obs_names:
         window_size = window_size
         dist_arr = np.sqrt(

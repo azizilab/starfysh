@@ -133,9 +133,9 @@ def display_reconst(
 def gene_mean_vs_inferred_prop(inference_outputs, visium_args,idx):
     
     sig_mean_n_df = pd.DataFrame(
-    np.array(visium_args.sig_mean_znorm)/(np.sum(np.array(visium_args.sig_mean_znorm),axis=1,keepdims=True)+1e-5),
-    columns=visium_args.sig_mean_znorm.columns,
-    index=visium_args.sig_mean_znorm.index
+    np.array(visium_args.sig_mean_norm)/(np.sum(np.array(visium_args.sig_mean_norm),axis=1,keepdims=True)+1e-5),
+    columns=visium_args.sig_mean_norm.columns,
+    index=visium_args.sig_mean_norm.index
     )
 
     qc_m = inference_outputs["qc_m"].detach().cpu().numpy()

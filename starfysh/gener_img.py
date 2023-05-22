@@ -21,7 +21,7 @@ from typing import List, Callable, Union, Any, TypeVar, Tuple
 from tqdm import tqdm
 from torchvision.utils import save_image
 
-sys.path.append('../starfysh/HE-Net')
+sys.path.append('HE-Net')
 torch.manual_seed(0) 
 from henet import  utils
 from henet import datasets
@@ -124,7 +124,7 @@ def generate_img(dat_path,
 
     """
     
-    dat_folder = '../data'
+    dat_folder = 'data'
     dat_name = 'CID44971'
     n_genes = 6000
     adata1,variable_gene = utils.load_adata(dat_folder=dat_folder,
@@ -212,8 +212,7 @@ def generate_img(dat_path,
     decoder = model.Decoder(latent_dim=latent_dim, hidden_dim = hidden_dim, output_dim = x_dim)
 
     vae = model.Model(Encoder=encoder, Decoder=decoder).to(DEVICE)
-    #check_point_filename = 'HE-Net/trained_model_on_lab1A.pt'
-    check_point_filename = '../starfysh/HE-Net/trained_model_on_lab1A.pt'
+    check_point_filename = 'HE-Net/trained_model_on_lab1A.pt'
     vae.load_state_dict(torch.load(check_point_filename,map_location=torch.device('cpu') ))
     
 

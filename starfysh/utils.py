@@ -128,8 +128,8 @@ class VisiumArguments:
         LOGGER.info('Identifying anchor spots (highly expression of specific cell-type signatures)...')
         anchor_info = self._compute_anchors()
 
-        # row-norm
-        self.sig_mean_norm[self.sig_mean_norm < 0] = 0
+        # "ReLU" on signature scores for valid dirichlet param
+        self.sig_mean_norm[self.sig_mean_norm < 0] = 1e-5
         self.sig_mean_norm.fillna(1/self.sig_mean_norm.shape[1], inplace=True)
         
         self.pure_spots, self.pure_dict, self.pure_idx = anchor_info        
@@ -326,7 +326,7 @@ class VisiumArguments:
 
     def _norm_sig(self):
         # col-norm for each cell type: divided by mean
-        gexp = self.sig_mean.apply(lambda x: x / x.mean(), axis=0)  
+        gexp = self.sig_mean.apply(lambda x: x / x.mean(), axis=0)
         return gexp
         
     def _calc_gene_scores(self):
@@ -339,12 +339,6 @@ class VisiumArguments:
             
         gsea_df = adata.obs[[cell_type+'_score' for cell_type in self.gene_sig.columns]]
         gsea_df.columns = self.gene_sig.columns
-
-        # row-norm
-        # gsea_df[gsea_df < 0] = 0
-        # gsea_df = gsea_df.div(gsea_df.sum(1), axis=0)
-        # gsea_df.fillna(1/gsea_df.shape[1], inplace=True)
-
         return gsea_df
 
 # --------------------------------

@@ -82,7 +82,7 @@ class AVAE(nn.Module):
         # DEBUG: set up non-informative, sparse Dirichlet prior for non-anchors
         # test whether to regularize non-anchors
         self.reg_na = reg_nonanchors
-        self.pc_na = torch.ones(batch_size, self.c_kn) * 0.2
+        self.pc_na = torch.ones(batch_size, self.c_kn) * 0.1
         self.pc_na = self.pc_na.to(device)
         
         self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)

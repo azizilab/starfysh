@@ -84,6 +84,7 @@ class AVAE(nn.Module):
         # test whether to regularize non-anchors
         self.reg_na = reg_nonanchors
         self.pc_na = torch.ones(batch_size, self.c_kn) * test_prior # test_prior = 0.2
+
         self.pc_na = self.pc_na.to(device)
         
         self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)

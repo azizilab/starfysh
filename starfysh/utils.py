@@ -232,14 +232,7 @@ class VisiumArguments:
                 # z-score
                 sd = score.std()
                 top_score = score_df.iloc[:, i][score > signif_level*sd]
-                
-                # filter out the anchors that has high value in other cell type
-                
-                top_score = top_score[top_score.index]
-                
-                #top_score = top_score[top_score - score_df.loc[top_score.index,score_df.columns != cell_type].max(axis=1) > 0.3]
-                
-               
+                top_score = top_score[top_score.index]                            
 
                 if len(top_score) <= n_anchor:
                     pure_spots.append(top_score.index)
@@ -287,7 +280,6 @@ class VisiumArguments:
         # row-norm
         self.sig_mean_norm[self.sig_mean_norm < 0] = 0
         self.sig_mean_norm.fillna(1/self.sig_mean_norm.shape[1], inplace=True)
-
         self.pure_spots, self.pure_dict, self.pure_idx = anchor_info
               
     def _get_sig_mean(self):
@@ -446,7 +438,6 @@ def run_starfysh(
                 win_loglib=win_loglib,
                 alpha_mul=alpha_mul,
                 batch_size=batch_size,
-                #test_prior=test_prior
             )
             # Update patched & flattened image patches
             visium_args._update_img_patches(trainset)
@@ -459,7 +450,6 @@ def run_starfysh(
                 batch_size=batch_size,
                 reg_nonanchors=reg_nonanchors,
                 test_prior=test_prior
-                
             )
 
         model = model.to(device)

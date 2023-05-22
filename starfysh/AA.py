@@ -15,6 +15,7 @@ from starfysh import LOGGER
 
 
 class ArchetypalAnalysis:
+    # Todo: add assertion that input `adata` should be raw counts to ensure math assumptions
     def __init__(
         self,
         adata_orig,
@@ -363,6 +364,20 @@ class ArchetypalAnalysis:
         reducer = umap.UMAP(n_neighbors=self.n_neighbors+10, n_components=ndim, random_state=random_state)
         U = reducer.fit_transform(np.vstack([self.count, self.archetype]))
         return U
+
+    def _get_knns(self, x, indices):
+        assert 0 <= indices.min() < indices.max() < x.shape[0], \
+            "Invalid indices of interest to compute k-NNs"
+        nbrs = np.zeros((len(indices), self.n_neighbors), dtype=np.int32)
+        for i, index in enumerate(indices):
+            u = x[index]
+            dist = np.ones(x.shape[0])*np.inf
+            for j, v in enumerate(x):
+                if i != j and not np.isin(j, indices):
+                    dist[j] = np.linalg.norm(u-v)
+            nbrs[i] = np.argsort(dist)[:self.n_neighbors]
+
+        return nbrs
 
     def _save_fig(self, fig, lgds, default_name):
         filename = self.filename if self.filename is not None else default_name

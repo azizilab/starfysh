@@ -28,9 +28,9 @@ setup(
         "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
     ],
-    extras_require={
-        'notebooks': nb_requirements,
-        'dev': open('dev-requirements.txt').read().splitlines(),
-    }
+    #extras_require={
+    ###    'notebooks': nb_requirements,
+        #'dev': open('dev-requirements.txt').read().splitlines(),
+    #}
 )
 

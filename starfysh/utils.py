@@ -55,7 +55,7 @@ class VisiumArguments:
         self.adata = adata
         self.adata_norm = adata_norm
         self.gene_sig = gene_sig
-        self.map_info = img_metadata['map_info'].iloc[:,:4].astype(float)
+        self.map_info = img_metadata['map_info'].iloc[:, :4].astype(float)
         self.img = img_metadata['img']
         self.img_patches = None 
         self.scalefactor = img_metadata['scalefactor']
@@ -134,7 +134,7 @@ class VisiumArguments:
         self.sig_mean_norm[self.sig_mean_norm < 0] = 1e-5
         self.sig_mean_norm = self.sig_mean_norm.div(self.sig_mean_norm.sum(1),axis=0)
         self.sig_mean_norm.fillna(1/self.sig_mean_norm.shape[1], inplace=True)
-        
+
         self.pure_spots, self.pure_dict, self.pure_idx = anchor_info        
         del self.adata.raw, self.adata_norm.raw 
 
@@ -216,35 +216,34 @@ class VisiumArguments:
         n_anchor = self.params['n_anchors']
         n_cell_types = self.sig_mean_norm.shape[1]
 
-        if score_type == 'gene_score':
-            pure_spots = []
-            for i, cell_type in enumerate(score_df.columns):
-
-                # find anchors by outlier detection
-                score = score_df.values[:, i] - (1/(n_cell_types-1)) * np.delete(score_df.values, i, axis=1).sum(1)
-                
-                # modified z-score
-                # med = np.median(score)
-                # mad = median_abs_deviation(score)
-                # modified_zscore = 0.6745 * (score-med)/mad
-                # top_score = score_df.iloc[:, i][modified_zscore > signif_level]
-
-                # z-score
-                sd = score.std()
-                top_score = score_df.iloc[:, i][score > signif_level*sd]
-                top_score = top_score[top_score.index]                            
-
-                if len(top_score) <= n_anchor:
-                    pure_spots.append(top_score.index)
-                else:
-                    pure_spots.append(top_score.index[(-top_score.values).argsort()[:n_anchor]])
-
-        else:
-            top_expr_spots = (-score_df.values).argsort(axis=0)[:n_anchor, :]
-            pure_spots = np.transpose(score_df.index[top_expr_spots])
-
-        # top_expr_spots = (-score_df.values).argsort(axis=0)[:n_anchor, :]
-        # pure_spots = np.transpose(score_df.index[top_expr_spots])
+        # DEBUG: retry only subset by # anchors
+        # if score_type == 'gene_score':
+        #     pure_spots = []
+        #     for i, cell_type in enumerate(score_df.columns):
+        #         # find anchors by outlier detection
+        #         score = score_df.values[:, i]
+        #
+        #         # modified z-score
+        #         med = np.median(score)
+        #         mad = median_abs_deviation(score)
+        #         modified_zscore = 0.6745 * (score-med)/mad
+        #         top_score = score_df.iloc[:, i][modified_zscore > signif_level]
+        #
+        #         # z-score
+        #         sd = score.std()
+        #         top_score = score_df.iloc[:, i][score > signif_level*sd]
+        #         top_score = top_score[top_score.index]
+        #
+        #         if len(top_score) <= n_anchor:
+        #             pure_spots.append(top_score.index)
+        #         else:
+        #             pure_spots.append(top_score.index[(-top_score.values).argsort()[:n_anchor]])
+        #
+        # else:
+        #     top_expr_spots = (-score_df.values).argsort(axis=0)[:n_anchor, :]
+        #     pure_spots = np.transpose(score_df.index[top_expr_spots])
+        top_expr_spots = (-score_df.values).argsort(axis=0)[:n_anchor, :]
+        pure_spots = np.transpose(score_df.index[top_expr_spots])
 
         pure_dict = {
             ct: spot
@@ -836,9 +835,10 @@ def get_windowed_library(adata_sample, map_info, library, window_size):
     for i in adata_sample.obs_names:
         window_size = window_size
         dist_arr = np.sqrt(
-            (map_info.loc[:, 'array_col'] - map_info.loc[i, 'array_col']) **2 +
+            (map_info.loc[:, 'array_col'] - map_info.loc[i, 'array_col']) ** 2 +
             (map_info.loc[:, 'array_row'] - map_info.loc[i, 'array_row']) ** 2
         )
+
         library_n.append(library[dist_arr < window_size].mean())
     library_n = np.array(library_n)
     return library_n

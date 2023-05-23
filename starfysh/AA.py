@@ -280,12 +280,16 @@ class ArchetypalAnalysis:
             ]
         )
         overlaps_df = pd.DataFrame(overlaps, index=anchor_df.columns, columns=self.arche_df.columns)
+        arche_argmaxs = overlaps.argmax(0)
 
         map_dict = {
             anchor_df.columns[k]: self.arche_df.columns[overlaps[k].argmax()]
             for k in range(overlaps.shape[0])
-            if overlaps[k, overlaps[k].argmax()] > 0
+            if overlaps[k, overlaps[k].argmax()] > 0 and
+               arche_argmaxs[overlaps[k].argmax()] == k  # Ensure mutual anchor <-> archetype argmax
+
         }
+
         return overlaps_df, map_dict
 
     def find_distant_archetypes(self, anchor_df, map_dict=None, n=3):
@@ -343,14 +347,15 @@ class ArchetypalAnalysis:
     def _get_knns(self, x, n_nbrs, indices):
         assert 0 <= indices.min() < indices.max() < x.shape[0], \
             "Invalid indices of interest to compute k-NNs"
-        nbrs = np.zeros((len(indices), self.n_neighbors), dtype=np.int32)
+        nbrs = np.zeros((len(indices), n_nbrs), dtype=np.int32)
+        print(nbrs.shape, n_nbrs)
         for i, index in enumerate(indices):
             u = x[index]
             dist = np.ones(x.shape[0])*np.inf
             for j, v in enumerate(x):
                 if i != j and j < self.n_spots:
                     dist[j] = np.linalg.norm(u-v)
-            nbrs[i] = np.argsort(dist)[:self.n_neighbors]
+            nbrs[i] = np.argsort(dist)[:n_nbrs]
 
         return nbrs
     
@@ -364,20 +369,6 @@ class ArchetypalAnalysis:
         reducer = umap.UMAP(n_neighbors=self.n_neighbors+10, n_components=ndim, random_state=random_state)
         U = reducer.fit_transform(np.vstack([self.count, self.archetype]))
         return U
-
-    def _get_knns(self, x, indices):
-        assert 0 <= indices.min() < indices.max() < x.shape[0], \
-            "Invalid indices of interest to compute k-NNs"
-        nbrs = np.zeros((len(indices), self.n_neighbors), dtype=np.int32)
-        for i, index in enumerate(indices):
-            u = x[index]
-            dist = np.ones(x.shape[0])*np.inf
-            for j, v in enumerate(x):
-                if i != j and not np.isin(j, indices):
-                    dist[j] = np.linalg.norm(u-v)
-            nbrs[i] = np.argsort(dist)[:self.n_neighbors]
-
-        return nbrs
 
     def _save_fig(self, fig, lgds, default_name):
         filename = self.filename if self.filename is not None else default_name

@@ -57,7 +57,7 @@ class ArchetypalAnalysis:
 
     def compute_archetypes(
         self, 
-        cn=30, 
+        cn=10, 
         n_iters=20, 
         converge=1e-3,
         r=20,
@@ -109,11 +109,10 @@ class ArchetypalAnalysis:
             LOGGER.info('Computing intrinsic dimension to estimate k...')
 
         # Estimate ID
-        conditional_num = cn
-        id_model = skdim.id.FisherS(conditional_number=conditional_num,
+        id_model = skdim.id.FisherS(conditional_number=cn,
                                     produce_plots=display,
                                     verbose=self.verbose)
-
+        
         self.kmin = max(1, int(id_model.fit(self.count).dimension_))
 
         # Compute raw archetypes
@@ -124,22 +123,25 @@ class ArchetypalAnalysis:
         evs = []
 
         # TODO: speedup with multiprocessing
-        for i, k in enumerate(range(self.kmin, self.kmin+n_iters)):
+        for i, k in enumerate(range(self.kmin, self.kmin+n_iters, 2)):
             archetype, _, _, _, ev = PCHA(X, noc=k)
             evs.append(ev)
             archetypes.append(np.array(archetype).T)
             if i > 0 and ev - evs[i-1] < converge:
+                # early stopping
                 break
         self.archetype = archetypes[-1]
 
         if self.U is None:
             self.U = self._get_umap(ndim=2)
-        if self.U_3d is None:
-            self.U_3d = self._get_umap(ndim=3)
+        #if self.U_3d is None:
+        #    self.U_3d = self._get_umap(ndim=3)
 
         # Merge raw archetypes to get major archetypes
         if self.verbose:
             LOGGER.info('{0} variance explained by raw archetypes.\nMerging raw archetypes within {1} NNs to get major archetypes'.format(np.round(ev, 4), r))
+            
+            
         arche_dict, major_idx = self._merge_archetypes(r)
         self.major_archetype = self.archetype[major_idx]
         self.major_idx = np.array(major_idx)
@@ -403,6 +405,7 @@ class ArchetypalAnalysis:
             fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=200, subplot_kw=dict(projection='3d'))
 
             # Color background spots & archetypal spots
+            
             ax.scatter(
                 U[:self.n_spots, 0],
                 U[:self.n_spots, 1],
@@ -435,7 +438,7 @@ class ArchetypalAnalysis:
                 for j, z in zip(arche_indices, U[self.n_spots+arche_indices]):
                     ax.text(z[0], z[1], z[2], str(j), fontsize=10, c='blue')
                     
-            lgd = ax.legend(loc='right', bbox_to_anchor=(0.5, 0, 1, 0.5), ncol=lgd_ncol)
+            lgd = ax.legend(loc='right', bbox_to_anchor=(0.5, 0, 1.5, 0.5), ncol=lgd_ncol)
             
             ax.grid(False)
             ax.set_xlabel('UMAP1')
@@ -490,7 +493,7 @@ class ArchetypalAnalysis:
                 
                 for j, z in zip(arche_indices, U[self.n_spots+arche_indices]):
                     ax.text(z[0], z[1], str(j), fontsize=10, c='blue')
-                lgd = ax.legend(loc='right', bbox_to_anchor=(2, 0.5), ncol=lgd_ncol)
+                lgd = ax.legend(loc='right', bbox_to_anchor=(1, 0.5), ncol=lgd_ncol)
                 
             ax.grid(False)
             ax.axis('off')

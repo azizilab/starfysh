@@ -62,7 +62,7 @@ class VisiumArguments:
 
         self.params = {
             'sample_id': 'ST', 
-            'n_anchors': 40,
+            'n_anchors': int(adata.shape[0]),
             'patch_r': 13,
             'sig_version': 'gene_score',
             'signif_level': 3,
@@ -954,3 +954,7 @@ def extract_feature(adata, key):
     adata_dummy = adata.copy()
     adata_dummy.obs = pd.DataFrame(adata.obsm[key], index=adata.obs.index, columns=cols)
     return adata_dummy
+
+
+
+    

@@ -28,6 +28,9 @@ class ArchetypalAnalysis:
         savefig=False,
     ):
 
+        # Check adata raw counts
+
+
         self.adata = adata_orig.copy()
         
         # Perform dim. reduction with PCA, select the first 30 PCs
@@ -57,7 +60,7 @@ class ArchetypalAnalysis:
 
     def compute_archetypes(
         self, 
-        cn=10, 
+        cn=30,
         n_iters=20, 
         converge=1e-3,
         r=20,
@@ -147,7 +150,7 @@ class ArchetypalAnalysis:
         self.major_idx = np.array(major_idx)
         self.arche_dict = arche_dict
 
-        # temp: return all archetypes for Silhouette score calculation
+        # return all archetypes for Silhouette score calculation
         return archetypes, arche_dict, major_idx, evs
     
     def _merge_archetypes(self, r):
@@ -246,20 +249,20 @@ class ArchetypalAnalysis:
 
     def assign_archetypes(self, anchor_df, r=30):
         """
-        Assign best 1-1 mapping of archetype community to its closest anchor community (cell-type specific anchor spots)
-        Criteria: choose the top cell type in which its anchors belongs to the top r neighbors to the given archetype
+        Stable-matching to obtain best 1-1 mapping of archetype community to its closest anchor community
+        (cell-type specific anchor spots)
 
         Parameters
         ----------
         anchor_df : pd.DataFrame
             Dataframe of anchor spot indices
 
-`       r : int
+    `   r : int
             Resolution parameter to threshold archetype - anchor mapping
 
         Returns
         -------
-        map_df : pd.DataFrame
+        overlaps_df : pd.DataFrame
             DataFrame of overlapping spot ratio of each anchor `i` to archetype `j`
 
         map_dict : dict
@@ -267,10 +270,10 @@ class ArchetypalAnalysis:
         """
         assert self.arche_df is not None, "Please compute archetypes & assign nearest-neighbors first!"
 
-        n_nbrs, n_archetypes = self.arche_df.shape
         x_concat = np.vstack([self.count, self.archetype])
         anchor_nbrs = anchor_df.values
-        archetypal_nbrs = self._get_knns(x_concat, n_nbrs=r, indices=self.n_spots+self.major_idx).T  # r-nearest nbrs to each archetype
+        archetypal_nbrs = self._get_knns(
+            x_concat, n_nbrs=r, indices=self.n_spots + self.major_idx).T  # r-nearest nbrs to each archetype
 
         overlaps = np.array(
             [
@@ -282,16 +285,15 @@ class ArchetypalAnalysis:
             ]
         )
         overlaps_df = pd.DataFrame(overlaps, index=anchor_df.columns, columns=self.arche_df.columns)
-        arche_argmaxs = overlaps.argmax(0)
 
-        map_dict = {
-            anchor_df.columns[k]: self.arche_df.columns[overlaps[k].argmax()]
-            for k in range(overlaps.shape[0])
-            if overlaps[k, overlaps[k].argmax()] > 0 and
-               arche_argmaxs[overlaps[k].argmax()] == k  # Ensure mutual anchor <-> archetype argmax
-
-        }
-
+        # archetype-anchor mapping: stable matching
+        map_dict = {}
+        for k in range(overlaps.shape[0]):
+            list_ = np.argsort(overlaps[k])[::-1]
+            for i in list_:
+                if np.argsort(overlaps[:, i])[::-1][0] == k:
+                    map_dict[anchor_df.columns[k]] = self.arche_df.columns[i]
+                    break
         return overlaps_df, map_dict
 
     def find_distant_archetypes(self, anchor_df, map_dict=None, n=3):
@@ -620,14 +622,15 @@ class ArchetypalAnalysis:
         filename = 'cluster' if self.filename is None else self.filename
         g = sns.clustermap(
             map_df, 
-            method='ward', vmin=0, vmax=1,
+            method='ward',
             figsize=figsize,
             xticklabels=True, 
             yticklabels=True,
+            square=True,
             annot_kws={'size': 15}
         )
         
-        text = g.ax_heatmap.set_title('Proportion of Overlapped Spots (k={})'.format(map_df.shape[1]),
+        text = g.ax_heatmap.set_title('# Overlapped NN Spots (k={})'.format(map_df.shape[1]),
                                       fontsize=20, x=0.6, y=1.3)
         # g.ax_row_dendrogram.set_visible(False)
         # g.ax_col_dendrogram.set_visible(False)

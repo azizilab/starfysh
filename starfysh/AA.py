@@ -15,6 +15,7 @@ from starfysh import LOGGER
 
 
 class ArchetypalAnalysis:
+    # Todo: add assertion that input `adata` should be raw counts to ensure math assumptions
     def __init__(
         self,
         adata_orig,
@@ -26,6 +27,9 @@ class ArchetypalAnalysis:
         filename=None,
         savefig=False,
     ):
+
+        # Check adata raw counts
+
 
         self.adata = adata_orig.copy()
         
@@ -56,7 +60,7 @@ class ArchetypalAnalysis:
 
     def compute_archetypes(
         self, 
-        cn=30, 
+        cn=30,
         n_iters=20, 
         converge=1e-3,
         r=20,
@@ -108,11 +112,10 @@ class ArchetypalAnalysis:
             LOGGER.info('Computing intrinsic dimension to estimate k...')
 
         # Estimate ID
-        conditional_num = cn
-        id_model = skdim.id.FisherS(conditional_number=conditional_num,
+        id_model = skdim.id.FisherS(conditional_number=cn,
                                     produce_plots=display,
                                     verbose=self.verbose)
-
+        
         self.kmin = max(1, int(id_model.fit(self.count).dimension_))
 
         # Compute raw archetypes
@@ -123,28 +126,31 @@ class ArchetypalAnalysis:
         evs = []
 
         # TODO: speedup with multiprocessing
-        for i, k in enumerate(range(self.kmin, self.kmin+n_iters)):
+        for i, k in enumerate(range(self.kmin, self.kmin+n_iters, 2)):
             archetype, _, _, _, ev = PCHA(X, noc=k)
             evs.append(ev)
             archetypes.append(np.array(archetype).T)
             if i > 0 and ev - evs[i-1] < converge:
+                # early stopping
                 break
         self.archetype = archetypes[-1]
 
         if self.U is None:
             self.U = self._get_umap(ndim=2)
-        if self.U_3d is None:
-            self.U_3d = self._get_umap(ndim=3)
+        #if self.U_3d is None:
+        #    self.U_3d = self._get_umap(ndim=3)
 
         # Merge raw archetypes to get major archetypes
         if self.verbose:
             LOGGER.info('{0} variance explained by raw archetypes.\nMerging raw archetypes within {1} NNs to get major archetypes'.format(np.round(ev, 4), r))
+            
+            
         arche_dict, major_idx = self._merge_archetypes(r)
         self.major_archetype = self.archetype[major_idx]
         self.major_idx = np.array(major_idx)
         self.arche_dict = arche_dict
 
-        # temp: return all archetypes for Silhouette score calculation
+        # return all archetypes for Silhouette score calculation
         return archetypes, arche_dict, major_idx, evs
     
     def _merge_archetypes(self, r):
@@ -243,20 +249,20 @@ class ArchetypalAnalysis:
 
     def assign_archetypes(self, anchor_df, r=30):
         """
-        Assign best 1-1 mapping of archetype community to its closest anchor community (cell-type specific anchor spots)
-        Criteria: choose the top cell type in which its anchors belongs to the top r neighbors to the given archetype
+        Stable-matching to obtain best 1-1 mapping of archetype community to its closest anchor community
+        (cell-type specific anchor spots)
 
         Parameters
         ----------
         anchor_df : pd.DataFrame
             Dataframe of anchor spot indices
 
-`       r : int
+    `   r : int
             Resolution parameter to threshold archetype - anchor mapping
 
         Returns
         -------
-        map_df : pd.DataFrame
+        overlaps_df : pd.DataFrame
             DataFrame of overlapping spot ratio of each anchor `i` to archetype `j`
 
         map_dict : dict
@@ -264,10 +270,10 @@ class ArchetypalAnalysis:
         """
         assert self.arche_df is not None, "Please compute archetypes & assign nearest-neighbors first!"
 
-        n_nbrs, n_archetypes = self.arche_df.shape
         x_concat = np.vstack([self.count, self.archetype])
         anchor_nbrs = anchor_df.values
-        archetypal_nbrs = self._get_knns(x_concat, n_nbrs=r, indices=self.n_spots+self.major_idx).T  # r-nearest nbrs to each archetype
+        archetypal_nbrs = self._get_knns(
+            x_concat, n_nbrs=r, indices=self.n_spots + self.major_idx).T  # r-nearest nbrs to each archetype
 
         overlaps = np.array(
             [
@@ -280,11 +286,14 @@ class ArchetypalAnalysis:
         )
         overlaps_df = pd.DataFrame(overlaps, index=anchor_df.columns, columns=self.arche_df.columns)
 
-        map_dict = {
-            anchor_df.columns[k]: self.arche_df.columns[overlaps[k].argmax()]
-            for k in range(overlaps.shape[0])
-            if overlaps[k, overlaps[k].argmax()] > 0
-        }
+        # archetype-anchor mapping: stable matching
+        map_dict = {}
+        for k in range(overlaps.shape[0]):
+            list_ = np.argsort(overlaps[k])[::-1]
+            for i in list_:
+                if np.argsort(overlaps[:, i])[::-1][0] == k:
+                    map_dict[anchor_df.columns[k]] = self.arche_df.columns[i]
+                    break
         return overlaps_df, map_dict
 
     def find_distant_archetypes(self, anchor_df, map_dict=None, n=3):
@@ -342,14 +351,15 @@ class ArchetypalAnalysis:
     def _get_knns(self, x, n_nbrs, indices):
         assert 0 <= indices.min() < indices.max() < x.shape[0], \
             "Invalid indices of interest to compute k-NNs"
-        nbrs = np.zeros((len(indices), self.n_neighbors), dtype=np.int32)
+        nbrs = np.zeros((len(indices), n_nbrs), dtype=np.int32)
+        print(nbrs.shape, n_nbrs)
         for i, index in enumerate(indices):
             u = x[index]
             dist = np.ones(x.shape[0])*np.inf
             for j, v in enumerate(x):
                 if i != j and j < self.n_spots:
                     dist[j] = np.linalg.norm(u-v)
-            nbrs[i] = np.argsort(dist)[:self.n_neighbors]
+            nbrs[i] = np.argsort(dist)[:n_nbrs]
 
         return nbrs
     
@@ -397,6 +407,7 @@ class ArchetypalAnalysis:
             fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=200, subplot_kw=dict(projection='3d'))
 
             # Color background spots & archetypal spots
+            
             ax.scatter(
                 U[:self.n_spots, 0],
                 U[:self.n_spots, 1],
@@ -429,7 +440,7 @@ class ArchetypalAnalysis:
                 for j, z in zip(arche_indices, U[self.n_spots+arche_indices]):
                     ax.text(z[0], z[1], z[2], str(j), fontsize=10, c='blue')
                     
-            lgd = ax.legend(loc='right', bbox_to_anchor=(0.5, 0, 1, 0.5), ncol=lgd_ncol)
+            lgd = ax.legend(loc='right', bbox_to_anchor=(0.5, 0, 1.5, 0.5), ncol=lgd_ncol)
             
             ax.grid(False)
             ax.set_xlabel('UMAP1')
@@ -484,7 +495,7 @@ class ArchetypalAnalysis:
                 
                 for j, z in zip(arche_indices, U[self.n_spots+arche_indices]):
                     ax.text(z[0], z[1], str(j), fontsize=10, c='blue')
-                lgd = ax.legend(loc='right', bbox_to_anchor=(2, 0.5), ncol=lgd_ncol)
+                lgd = ax.legend(loc='right', bbox_to_anchor=(1, 0.5), ncol=lgd_ncol)
                 
             ax.grid(False)
             ax.axis('off')
@@ -611,14 +622,15 @@ class ArchetypalAnalysis:
         filename = 'cluster' if self.filename is None else self.filename
         g = sns.clustermap(
             map_df, 
-            method='ward', vmin=0, vmax=1,
+            method='ward',
             figsize=figsize,
             xticklabels=True, 
             yticklabels=True,
+            square=True,
             annot_kws={'size': 15}
         )
         
-        text = g.ax_heatmap.set_title('Proportion of Overlapped Spots (k={})'.format(map_df.shape[1]),
+        text = g.ax_heatmap.set_title('# Overlapped NN Spots (k={})'.format(map_df.shape[1]),
                                       fontsize=20, x=0.6, y=1.3)
         # g.ax_row_dendrogram.set_visible(False)
         # g.ax_col_dendrogram.set_visible(False)

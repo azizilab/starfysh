@@ -23,7 +23,7 @@ class VisiumDataset(Dataset):
 
         x = adata.X if isinstance(adata.X, np.ndarray) else adata.X.A
         self.expr_mat = pd.DataFrame(x, index=spots, columns=genes)
-        self.gexp = args.sig_mean_znorm
+        self.gexp = args.sig_mean_norm
         self.anchor_idx = args.pure_idx
         self.library_n = args.win_loglib
 

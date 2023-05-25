@@ -161,7 +161,7 @@ def pl_spatial_inf_gene(
     adata,
     factor,
     feature,
-    vmin=0,
+    vmin=None,
     vmax=None,
     spot_size=100,
     alpha=0,
@@ -295,7 +295,7 @@ def disp_corr(
 
     if title is not None:
         # ax.set_title(title+'\n'+'Distance = %.3f' % (dist2identity(corr)))
-        ax.set_title(title + '\n' + 'Distance = %.3f' % (dist2gt(corr, gt_corr)))
+        ax.set_title(title + '\n' + 'Distance = %.3f' % (_dist2gt(corr, gt_corr)))
 
     for item in (ax.get_xticklabels() + ax.get_yticklabels()):
         item.set_fontsize(12)

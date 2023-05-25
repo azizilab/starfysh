@@ -352,7 +352,6 @@ class ArchetypalAnalysis:
         assert 0 <= indices.min() < indices.max() < x.shape[0], \
             "Invalid indices of interest to compute k-NNs"
         nbrs = np.zeros((len(indices), n_nbrs), dtype=np.int32)
-        print(nbrs.shape, n_nbrs)
         for i, index in enumerate(indices):
             u = x[index]
             dist = np.ones(x.shape[0])*np.inf

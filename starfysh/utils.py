@@ -104,7 +104,6 @@ class VisiumArguments:
         log_lib = np.log1p(self.adata.X.sum(1))
         self.log_lib = np.squeeze(np.asarray(log_lib)) if log_lib.ndim > 1 else log_lib
         
-        
         self.win_loglib = get_windowed_library(self.adata,
                                                self.map_info,
                                                self.log_lib,

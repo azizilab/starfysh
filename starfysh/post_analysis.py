@@ -25,6 +25,18 @@ def plot_type_all(inference_outputs,u, proportions):
     cmaps = ['Blues','Greens','Reds','Oranges','Purples']
     for i in range(proportions.shape[1]):
         plt.scatter(u[group_c==i,0],u[group_c==i,1],s=1,c = qc_m[group_c==i,i], cmap=cmaps[i])
+
+    # project the model's u on the umap
+    from sklearn.neighbors import KNeighborsRegressor
+    knr = KNeighborsRegressor(10)
+    knr.fit(inference_outputs["qz_m"].detach().cpu().numpy(), u)
+    qu_umap = knr.predict(inference_outputs["qu_m"].detach().cpu().numpy())
+    plt.scatter(
+        *qu_umap.T,
+        c=["blue", "green", "red", "orange", "purple"],
+        edgecolors="black",
+    )
+
     plt.legend(proportions.columns,loc='right', bbox_to_anchor=(2.2,0.5),)
     plt.axis('off')
     

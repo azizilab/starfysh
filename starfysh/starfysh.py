@@ -45,7 +45,8 @@ class AVAE(nn.Module):
         # DEBUG: whether to regularize non-anchors?
         reg_nonanchors=True,
         test_prior = 0.2,
-        device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
+        seed=0,
     ) -> None:
         """
         Auxiliary Variational AutoEncoder (AVAE) - Core model for
@@ -67,6 +68,7 @@ class AVAE(nn.Module):
             signature prior's confidence
         """
         super().__init__()
+        torch.manual_seed(seed)
         self.win_loglib=torch.Tensor(win_loglib)
 
         self.c_in = adata.shape[1]  # c_in : Num. input features (# input genes)

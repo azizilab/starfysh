@@ -366,7 +366,8 @@ def run_starfysh(
         reg_nonanchors=True,  # DEBUG: whether to regularize for non-anchors
         poe=False,
         device=torch.device('cpu'),
-        verbose=True
+        verbose=True,
+        seed=0,
 ):
     """
     Wrapper to run starfysh deconvolution.
@@ -394,7 +395,7 @@ def run_starfysh(
     loss : np.ndarray
         Training losses
     """
-    np.random.seed(0)
+    np.random.seed(seed)
 
     # Loading parameters
     adata = visium_args.adata
@@ -441,7 +442,8 @@ def run_starfysh(
                 alpha_mul=alpha_mul,
                 batch_size=batch_size,
                 reg_nonanchors=reg_nonanchors,
-                test_prior=test_prior
+                test_prior=test_prior,
+                seed=seed,
             )
 
         model = model.to(device)

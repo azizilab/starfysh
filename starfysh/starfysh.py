@@ -33,18 +33,13 @@ class AVAE(nn.Module):
         p(z|x)~N(0,1)
         q(z|x)~g(x)
     """
-    
+
     def __init__(
         self,
         adata,
         gene_sig,
         win_loglib,
-        alpha_mul=50,
-        batch_size=32,
-
-        # DEBUG: whether to regularize non-anchors?
-        reg_nonanchors=True,
-        test_prior = 0.2,
+        alpha_mul=20,
         device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ) -> None:
         """
@@ -67,7 +62,7 @@ class AVAE(nn.Module):
             signature prior's confidence
         """
         super().__init__()
-        self.win_loglib=torch.Tensor(win_loglib)
+        self.win_loglib = torch.Tensor(win_loglib)
 
         self.c_in = adata.shape[1]  # c_in : Num. input features (# input genes)
         self.c_bn = 10  # c_bn : latent number, numbers of bottle-necks
@@ -75,65 +70,57 @@ class AVAE(nn.Module):
         self.c_kn = gene_sig.shape[1]
         self.eps = 1e-5  # for r.v. w/ numerical constraints
         self.device = device
-        
-        self.alpha = torch.ones(self.c_kn)*alpha_mul
+
+        self.alpha = torch.ones(self.c_kn) * alpha_mul
         self.alpha = self.alpha.to(device)
 
-        # DEBUG: set up non-informative, sparse Dirichlet prior for non-anchors
-        # test whether to regularize non-anchors
-        self.reg_na = reg_nonanchors
-        self.pc_na = torch.ones(batch_size, self.c_kn) * test_prior # test_prior = 0.2
-        self.pc_na = self.pc_na.to(device)
-        
         self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
         self.qu_m = torch.nn.Parameter(torch.randn(self.c_kn, self.c_bn), requires_grad=True)
         self.qu_logv = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
 
         self.c_enc = nn.Sequential(
-                                nn.Linear(self.c_in, self.c_hidden, bias=True),
-                                nn.BatchNorm1d(self.c_hidden, momentum=0.01,eps=0.001),
-                                nn.ReLU()
+            nn.Linear(self.c_in, self.c_hidden, bias=True),
+            nn.BatchNorm1d(self.c_hidden, momentum=0.01, eps=0.001),
+            nn.ReLU()
         )
-        
+
         self.c_enc_m = nn.Sequential(
-                                nn.Linear(self.c_hidden, self.c_kn, bias=True),
-                                nn.BatchNorm1d(self.c_kn, momentum=0.01,eps=0.001),
-                                nn.Softmax(dim=-1)
+            nn.Linear(self.c_hidden, self.c_kn, bias=True),
+            nn.BatchNorm1d(self.c_kn, momentum=0.01, eps=0.001),
+            nn.Softmax(dim=-1)
         )
-        
+
         self.l_enc = nn.Sequential(
-                                nn.Linear(self.c_in, self.c_hidden, bias=True),
-                                nn.BatchNorm1d(self.c_hidden, momentum=0.01,eps=0.001),
-                                nn.ReLU(),
-                                #nn.Linear(self.c_hidden, 1, bias=True),
-                                #nn.ReLU(),
+            nn.Linear(self.c_in, self.c_hidden, bias=True),
+            nn.BatchNorm1d(self.c_hidden, momentum=0.01, eps=0.001),
+            nn.ReLU()
         )
-        
+
         self.l_enc_m = nn.Linear(self.c_hidden, 1)
         self.l_enc_logv = nn.Linear(self.c_hidden, 1)
-        
+
         # neural network f1 to get the z, p(z|x), f1(x,\phi_1)=[z_m,torch.exp(z_logv)]
         self.z_enc = nn.Sequential(
-                                #nn.Linear(self.c_in+self.c_kn, self.c_hidden, bias=True),
-                                nn.Linear(self.c_in, self.c_hidden, bias=True),
-                                nn.BatchNorm1d(self.c_hidden, momentum=0.01,eps=0.001),
-                                nn.ReLU(),
+            # nn.Linear(self.c_in+self.c_kn, self.c_hidden, bias=True),
+            nn.Linear(self.c_in, self.c_hidden, bias=True),
+            nn.BatchNorm1d(self.c_hidden, momentum=0.01, eps=0.001),
+            nn.ReLU(),
         )
-        
-        self.z_enc_m = nn.Linear(self.c_hidden, self.c_bn *  self.c_kn)
+
+        self.z_enc_m = nn.Linear(self.c_hidden, self.c_bn * self.c_kn)
         self.z_enc_logv = nn.Linear(self.c_hidden, self.c_bn * self.c_kn)
-        
+
         # gene dispersion
-        self._px_r = torch.nn.Parameter(torch.randn(self.c_in),requires_grad=True)
+        self._px_r = torch.nn.Parameter(torch.randn(self.c_in), requires_grad=True)
 
         # neural network g to get the x_m and x_v, p(x|z), g(z,\phi_3)=[x_m,x_v]
         self.px_hidden_decoder = nn.Sequential(
-                                nn.Linear(self.c_bn, self.c_hidden, bias=True),
-                                nn.ReLU(),         
+            nn.Linear(self.c_bn, self.c_hidden, bias=True),
+            nn.ReLU(),
         )
         self.px_scale_decoder = nn.Sequential(
-                              nn.Linear(self.c_hidden,self.c_in),
-                              nn.Softmax(dim=-1)
+            nn.Linear(self.c_hidden, self.c_in),
+            nn.Softmax(dim=-1)
         )
 
     def reparameterize(self, mu, log_var):
@@ -141,161 +128,140 @@ class AVAE(nn.Module):
         :param mu: mean from the encoder's latent space
         :param log_var: log variance from the encoder's latent space
         """
-        std = torch.exp(0.5*log_var)  # standard deviation
+        std = torch.exp(0.5 * log_var)  # standard deviation
         eps = torch.randn_like(std)  # `randn_like` as we need the same size
         sample = mu + (eps * std)  # sampling
         return sample
-    
+
     def inference(self, x):
         x_n = torch.log1p(x)
+
         hidden = self.l_enc(x_n)
         ql_m = self.l_enc_m(hidden)
         ql_logv = self.l_enc_logv(hidden)
         ql = self.reparameterize(ql_m, ql_logv)
 
-        x_n = torch.log1p(x)
         hidden = self.c_enc(x_n)
         qc_m = self.c_enc_m(hidden)
         qc = Dirichlet(qc_m * self.alpha + self.eps).rsample()[:,:,None]
-        hidden = self.z_enc(x_n)
 
-        qz_m_ct = self.z_enc_m(hidden).reshape([x_n.shape[0],self.c_kn,self.c_bn])
-        qz_m_ct = (qc * qz_m_ct)
+        hidden = self.z_enc(x_n)
+        qz_m_ct = self.z_enc_m(hidden).reshape([x_n.shape[0], self.c_kn, self.c_bn])
+        qz_m_ct = qc * qz_m_ct
         qz_m = qz_m_ct.sum(axis=1)
 
-        qz_logv_ct = self.z_enc_logv(hidden).reshape([x_n.shape[0],self.c_kn,self.c_bn])
-        qz_logv_ct = (qc * qz_logv_ct)
+        qz_logv_ct = self.z_enc_logv(hidden).reshape([x_n.shape[0], self.c_kn, self.c_bn])
+        qz_logv_ct = qc * qz_logv_ct
         qz_logv = qz_logv_ct.sum(axis=1)
         qz = self.reparameterize(qz_m, qz_logv)
 
-        qu_m = self.qu_m
-        qu_logv = self.qu_logv
-        qu = self.reparameterize(qu_m, qu_logv)
+        qu = self.reparameterize(self.qu_m, self.qu_logv)
 
         return dict(
-                    qc_m = qc_m,
-                    qc=qc,
-                    qz_m=qz_m,
-                    qz_m_ct=qz_m_ct,
-                    qz_logv = qz_logv,
-                    qz_logv_ct = qz_logv_ct,
-                    qz=qz,
-                    ql_m=ql_m,
-                    ql_logv=ql_logv,
-                    ql=ql,
-                    qu_m=qu_m,
-                    qu_logv=qu_logv,
-                    qu=qu,
-                    qs_logm=self.qs_logm,
-                   )
-    
+            # q(u)
+            qu=qu,
+            
+            # q(c | x)
+            qc_m=qc_m,
+            qc=qc,
+            
+            # q(z | c, x)
+            qz_m=qz_m,
+            qz_m_ct=qz_m_ct,
+            qz_logv=qz_logv,
+            qz_logv_ct=qz_logv_ct,
+            qz=qz,
+            
+            # q(l | x)
+            ql_m=ql_m,
+            ql_logv=ql_logv,
+            ql=ql,
+        )
+
     def generative(
-        self,
-        inference_outputs,
-        xs_k,
-        anchor_idx
+            self,
+            inference_outputs,
+            xs_k,
     ):
-        
         qz = inference_outputs['qz']
         ql = inference_outputs['ql']
 
         hidden = self.px_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
-        self.px_rate = torch.exp(ql) * px_scale + self.eps
+        px_rate = torch.exp(ql) * px_scale + self.eps
         pc_p = xs_k + self.eps
 
         return dict(
-            px_rate=self.px_rate,
+            px_rate=px_rate,
             px_r=self.px_r,
             pc_p=pc_p,
             xs_k=xs_k,
         )
-    
+
     def get_loss(
         self,
         generative_outputs,
         inference_outputs,
         x,
-        x_peri,
         library,
         device
     ):
-    
-        qc = inference_outputs["qc"]
-        qc_m = inference_outputs["qc_m"]
-
+        # Variational params
         qs_logm = self.qs_logm
-        qu = inference_outputs["qu"]
-        qu_m = inference_outputs["qu_m"]
-        qu_logv = inference_outputs["qu_logv"]
+        qu_m, qu_logv, qu = self.qu_m, self.qu_logv, inference_outputs["qu"]
+        qc_m, qc = inference_outputs["qc_m"], inference_outputs["qc"]
+        qz_m, qz_logv = inference_outputs["qz_m"], inference_outputs["qz_logv"]
+        ql_m, ql_logv = inference_outputs["ql_m"], inference_outputs['ql_logv']
 
-        qz_m = inference_outputs["qz_m"]
-        qz_logv = inference_outputs["qz_logv"]
-
-        ql_m = inference_outputs["ql_m"]
-        ql_logv = inference_outputs['ql_logv']
-        ql = inference_outputs['ql']
-        
+        # p(x | z), p(c; \alpha), p(u; \sigma)
         px_rate = generative_outputs["px_rate"]
         px_r = generative_outputs["px_r"]
         pc_p = generative_outputs["pc_p"]
-
-
-        # Regularization terms
+        
         pu_m = torch.zeros_like(qu_m)
         pu_std = torch.ones_like(qu_logv) * 10
+
+        # Regularization terms
         kl_divergence_u = kl(
             Normal(qu_m, torch.exp(qu_logv / 2)),
             Normal(pu_m, pu_std)
         ).sum(dim=1).mean()
 
-        mean_pz = (qu.unsqueeze(0) * qc).sum(axis=1)
-        std_pz = (torch.exp(qs_logm / 2).unsqueeze(0) * qc).sum(axis=1)
+        kl_divergence_l = kl(
+            Normal(ql_m, torch.exp(ql_logv / 2)),
+            Normal(library, torch.ones_like(ql_m))
+        ).sum(dim=1).mean()
+
+        kl_divergence_c = kl(
+            Dirichlet(qc_m * self.alpha),
+            Dirichlet(pc_p * self.alpha)
+        ).mean()
+
+        pz_m = (qu.unsqueeze(0) * qc).sum(axis=1)
+        pz_std = (torch.exp(qs_logm / 2).unsqueeze(0) * qc).sum(axis=1)
+        
         kl_divergence_z = kl(
             Normal(qz_m, torch.exp(qz_logv / 2)),
-            Normal(mean_pz, std_pz)
+            Normal(pz_m, pz_std)
         ).sum(dim=1).mean()
-
-        kl_divergence_n = kl(
-            Normal(ql_m, torch.exp(ql_logv / 2)),
-            Normal(library, torch.ones_like(ql))
-        ).sum(dim=1).mean()
-
-        # DEBUG: test what if we set uninformative but sparse uniform Dirichlet for non-anchors
-        kl_divergence_c = torch.tensor([0.0]).to(self.device)
-        anchor_indices = x_peri[:, 0] == 1
-        na_indices = x_peri[:, 0] == 0
-        if anchor_indices.sum() > 0:
-            kl_divergence_c += kl(
-                Dirichlet(qc_m[anchor_indices] * self.alpha),
-                Dirichlet(pc_p[anchor_indices] * self.alpha)
-            ).mean()
-        if na_indices.sum() > 0 and self.reg_na:
-            pc_na = self.pc_na[:na_indices.shape[0]]  # edge condition: last batch w/ shape < batch-size
-            kl_divergence_c += kl(
-                Dirichlet(qc_m[na_indices] * self.alpha),
-                Dirichlet(pc_na[na_indices])
-            ).mean()
-
-
+        
         # Reconstruction term
         reconst_loss = -NegBinom(px_rate, torch.exp(px_r)).log_prob(x).sum(-1).mean()
-        
-        reconst_loss = reconst_loss.to(device)
-        kl_divergence_u = kl_divergence_u.to(device)
-        kl_divergence_z = kl_divergence_z.to(device)
-        kl_divergence_c = kl_divergence_c.to(device)
-        kl_divergence_n = kl_divergence_n.to(device)
-        loss = reconst_loss + kl_divergence_u + kl_divergence_z + kl_divergence_c + kl_divergence_n 
+
+        loss = reconst_loss.to(device) + \
+               kl_divergence_u.to(device) + \
+               kl_divergence_z.to(device) + \
+               kl_divergence_c.to(device) + \
+               kl_divergence_l.to(device)
 
         return (loss,
                 reconst_loss,
                 kl_divergence_u,
                 kl_divergence_z,
                 kl_divergence_c,
-                kl_divergence_n
-               )
-    
+                kl_divergence_l
+                )
+
     @property
     def px_r(self):
         return F.softplus(self._px_r) + self.eps
@@ -315,9 +281,8 @@ class AVAE_PoE(nn.Module):
         gene_sig,
         patch_r,
         win_loglib,
-        alpha_mul=50,
-        batch_size=32,
-        reg_nonanchors=True,
+        alpha_mul=20,
+        n_img_chan=1,
         device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ) -> None:
         """
@@ -346,27 +311,21 @@ class AVAE_PoE(nn.Module):
         super(AVAE_PoE, self).__init__()
 
         self.win_loglib = torch.Tensor(win_loglib)
-
-        self.c_in = adata.shape[1]  # c_in : Num. input features (# input genes)
-        self.c_bn = 10  # c_bn : latent number, numbers of bottle neck
-        self.c_hidden = 256
         self.patch_r = patch_r
+        self.c_in = adata.shape[1]  # c_in : Num. input features (# input genes)
+        self.c_in_img = self.patch_r**2 * 4 * n_img_chan  # c_in_img : (# pixels for the spot's img patch)
+        self.c_bn = 10  # c_bn : latent number, numbers of bottleneck
+        self.c_hidden = 256
         self.c_kn = gene_sig.shape[1]
+        
         self.eps = 1e-5  # for r.v. w/ numerical constraints
         self.alpha = torch.ones(self.c_kn) * alpha_mul
         self.alpha = self.alpha.to(device)
-        
-        
-        self.reg_na = reg_nonanchors
-        self.pc_na = torch.ones(batch_size, self.c_kn) * 0.1
-        self.pc_na = self.pc_na.to(device)
-        
-        self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
-        
-        self.qu_m = torch.nn.Parameter(torch.randn(self.c_kn, self.c_bn), requires_grad=True)
-        
-        self.qu_logv = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
 
+        # --- neural nets for Expression view ---
+        self.qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
+        self.qu_m = torch.nn.Parameter(torch.randn(self.c_kn, self.c_bn), requires_grad=True)
+        self.qu_logv = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
 
         self.c_enc = nn.Sequential(
             nn.Linear(self.c_in, self.c_hidden, bias=True),
@@ -379,12 +338,12 @@ class AVAE_PoE(nn.Module):
             nn.BatchNorm1d(self.c_kn, momentum=0.01, eps=0.001),
             nn.Softmax(dim=-1)
         )
+
         self.l_enc = nn.Sequential(
             nn.Linear(self.c_in, self.c_hidden, bias=True),
             nn.BatchNorm1d(self.c_hidden, momentum=0.01, eps=0.001),
             nn.ReLU(),
         )
-
         self.l_enc_m = nn.Linear(self.c_hidden, 1)
         self.l_enc_logv = nn.Linear(self.c_hidden, 1)
 
@@ -398,10 +357,10 @@ class AVAE_PoE(nn.Module):
         self.z_enc_logv = nn.Linear(self.c_hidden, self.c_bn * self.c_kn)
 
         # gene dispersion
-        self.px_r = torch.nn.Parameter(torch.randn(self.c_in), requires_grad=True)
+        self._px_r = torch.nn.Parameter(torch.randn(self.c_in), requires_grad=True)
 
         # neural network g to get the x_m and x_v, p(x|z), g(z,\phi_3)=[x_m,x_v]
-        self.px_hidden_decoder = nn.Sequential(
+        self.z_to_hidden_decoder = nn.Sequential(
             nn.Linear(self.c_bn, self.c_hidden, bias=True),
             nn.ReLU(),
         )
@@ -410,65 +369,45 @@ class AVAE_PoE(nn.Module):
             nn.Softmax(dim=-1)
         )
 
-        self.px_r_poe = torch.nn.Parameter(torch.randn(self.c_in), requires_grad=True)
-
-        self.img_l_enc = nn.Sequential(
-            nn.Linear(self.patch_r * self.patch_r * 4 * 3, self.c_hidden, bias=True),
-            nn.BatchNorm1d(self.c_hidden, momentum=0.01, eps=0.001),
-            nn.ReLU(),
-        )
-        self.img_l_enc_m = nn.Linear(self.c_hidden, 1)
-        self.img_l_enc_logv = nn.Linear(self.c_hidden, 1)
-
-        self.img_c_enc = nn.Sequential(
-            nn.Linear(self.patch_r * self.patch_r * 4 * 3, self.c_hidden, bias=True),  # flatten the images into 1D
+        # --- neural nets for Histology view ---
+        # encoder paths:
+        self.img_z_enc = nn.Sequential(
+            nn.Linear(self.c_in_img, self.c_hidden, bias=True),
             nn.BatchNorm1d(self.c_hidden, momentum=0.01, eps=0.001),
             nn.ReLU()
         )
-        self.img_c_enc_m = nn.Sequential(
-            nn.Linear(self.c_hidden, self.c_kn, bias=True),
-            nn.BatchNorm1d(self.c_kn, momentum=0.01, eps=0.001),
-            nn.Softmax(dim=-1)
+        self.img_z_enc_m = nn.Linear(self.c_hidden, self.c_bn)
+        self.img_z_enc_logv = nn.Linear(self.c_hidden, self.c_bn)
+
+        # decoder paths:
+        self.img_z_to_hidden_decoder = nn.Linear(self.c_bn, self.c_hidden, bias=True)
+        self.py_mu_decoder = nn.Sequential(
+            nn.Linear(self.c_hidden, self.c_in_img),
+            nn.BatchNorm1d(self.c_in_img, momentum=0.01, eps=0.001),
+            nn.ReLU()
+        )
+        self.py_logv_decoder = nn.Sequential(
+            nn.Linear(self.c_hidden, self.c_in_img),
+            nn.ReLU()
         )
 
-        self.imgVAE_z_enc = nn.Sequential(
-            nn.Linear(self.patch_r * self.patch_r * 4 * 3, self.c_hidden, bias=True),
-            nn.BatchNorm1d(self.c_hidden, momentum=0.01, eps=0.001),
-            nn.ReLU(),
-        )
-
-        self.imgVAE_mu = nn.Linear(self.c_hidden, self.c_bn * self.c_kn)
-        self.imgVAE_logvar = nn.Linear(self.c_hidden, self.c_bn * self.c_kn)
-
-        self.imgVAE_z_fc = nn.Linear(self.c_bn, self.c_hidden)
-
-        self.imgVAE_dec = nn.Sequential(nn.Linear(self.c_hidden, self.patch_r * self.patch_r * 4 * 3, bias=True),
-                                        nn.BatchNorm1d(self.patch_r * self.patch_r * 4 * 3, momentum=0.01, eps=0.001),
-                                        )
-
-        # PoE
-        #self.POE_z_fc = nn.Linear(self.c_bn, self.c_hidden)
-        self.POE_z_fc = nn.Sequential(
-            nn.Linear(self.c_bn, self.c_hidden, bias=True),
-            nn.ReLU(),
-        )
-
-        self.POE_px_scale_decoder = nn.Sequential(
+        # --- PoE view ---
+        self.z_to_hidden_poe_decoder = nn.Linear(self.c_bn, self.c_hidden, bias=True)
+        self.px_scale_poe_decoder = nn.Sequential(
             nn.Linear(self.c_hidden, self.c_in),
             nn.ReLU()
         )
+        self._px_r_poe = torch.nn.Parameter(torch.randn(self.c_in), requires_grad=True)
 
-        self.POE_dec_img = nn.Sequential(
-            nn.Linear(self.c_hidden, self.patch_r * self.patch_r * 4 * 3, bias=True),
-            nn.BatchNorm1d(self.patch_r * self.patch_r * 4 * 3, momentum=0.01, eps=0.001),
-            # nn.ReLU(),
+        self.py_mu_poe_decoder = nn.Sequential(
+            nn.Linear(self.c_hidden, self.c_in_img),
+            nn.BatchNorm1d(self.c_in_img, momentum=0.01, eps=0.001),
+            nn.ReLU()
         )
-        
-        self.img_qs_logm = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
-        
-        self.img_qu_m = torch.nn.Parameter(torch.randn(self.c_kn, self.c_bn), requires_grad=True)
-        
-        self.img_qu_logv = torch.nn.Parameter(torch.zeros(self.c_kn, self.c_bn), requires_grad=True)
+        self.py_logv_poe_decoder = nn.Sequential(
+            nn.Linear(self.c_hidden, self.c_in_img),
+            nn.ReLU()
+        )
 
     def reparameterize(self, mu, log_var):
         """
@@ -481,115 +420,58 @@ class AVAE_PoE(nn.Module):
         return sample
 
     def inference(self, x):
-        # TODO: Double-check gradient vanishing for qc_m, likely due to KL( q(c|x) || p(c) )
-        # verify whether mul. w/ alpha for q(c|x)
-
-        # l is inferred from logrithmized x
-        x_n = torch.log1p(x)
+        # q(l | x)
+        x_n = torch.log1p(x)  # l is inferred from log(x)
+        
         hidden = self.l_enc(x_n)
         ql_m = self.l_enc_m(hidden)
         ql_logv = self.l_enc_logv(hidden)
         ql = self.reparameterize(ql_m, ql_logv)
 
-        x_n = torch.log1p(x)
+        # q(c | x)
         hidden = self.c_enc(x_n)
         qc_m = self.c_enc_m(hidden)
-        qc = Dirichlet(self.alpha * qc_m + self.eps).rsample()[:, :, None]
+        qc = Dirichlet(qc_m * self.alpha + self.eps).rsample()[:,:,None]
 
+        # q(z | c, x)
         hidden = self.z_enc(x_n)
-        
-        
         qz_m_ct = self.z_enc_m(hidden).reshape([x_n.shape[0], self.c_kn, self.c_bn])
         qz_m_ct = qc * qz_m_ct
         qz_m = qz_m_ct.sum(axis=1)
-        #qz_m = (qc * qz_m_ct).sum(axis=1)
+
         qz_logv_ct = self.z_enc_logv(hidden).reshape([x_n.shape[0], self.c_kn, self.c_bn])
-        qz_logv_ct = (qc * qz_logv_ct)
+        qz_logv_ct = qc * qz_logv_ct
         qz_logv = qz_logv_ct.sum(axis=1)
         qz = self.reparameterize(qz_m, qz_logv)
-        #qz_logv = (qc * qz_logv_ct).sum(axis=1)
-        
-        qu_m = self.qu_m
-        qu_logv = self.qu_logv
-        qu = self.reparameterize(qu_m, qu_logv)
 
-        #qz = self.reparameterize(qz_m, qz_logv)
+        # q(u), mean-field VI
+        qu = self.reparameterize(self.qu_m, self.qu_logv)
+
         return dict(
+            # q(u)
+            qu=qu,
+            
+            # q(c | x)
             qc_m=qc_m,
             qc=qc,
+            
+            # q(z | x)
             qz_m=qz_m,
             qz_m_ct=qz_m_ct,
             qz_logv=qz_logv,
             qz_logv_ct=qz_logv_ct,
             qz=qz,
+            
+            # q(l | x)
             ql_m=ql_m,
             ql_logv=ql_logv,
             ql=ql,
-            qu_m=qu_m,
-            qu_logv=qu_logv,
-            qu=qu,
-            qs_logm=self.qs_logm,
-            
         )
-
-    def predict_imgVAE(self, x):
-        # x = x * 255
-        x = torch.log1p(x)
-
-        hidden = self.img_l_enc(x)
-        img_ql_m = self.img_l_enc_m(hidden)
-        img_ql_logv = self.img_l_enc_logv(hidden)
-        img_ql = self.reparameterize(img_ql_m, img_ql_logv)
-
-        hidden = self.img_c_enc(x)
-        img_qc_m = self.img_c_enc_m(hidden)
-        img_qc = Dirichlet(self.alpha * img_qc_m + self.eps).rsample()[:, :, None]
-        hidden = self.imgVAE_z_enc(x)
-        
-        
-        img_qz_m_ct = self.imgVAE_mu(hidden).reshape([x.shape[0], self.c_kn, self.c_bn])
-        # img_qz_m_ct = (img_qc * img_qz_m_ct)
-        # img_qz_m = (img_qc * img_qz_m_ct).sum(axis=1)
-        img_qz_m_ct = (img_qc * img_qz_m_ct)
-        img_qz_m = img_qz_m_ct.sum(axis=1)
-
-        img_qz_logv_ct = self.imgVAE_logvar(hidden).reshape([x.shape[0], self.c_kn, self.c_bn])
-        # img_qz_logv_ct = (img_qc * img_qz_logv_ct)
-        #img_qz_logv = (img_qc * img_qz_logv_ct).sum(axis=1)
-        img_qz_logv_ct = (img_qc * img_qz_logv_ct)
-        img_qz_logv = img_qz_logv_ct.sum(axis=1)
-        img_qz = self.reparameterize(img_qz_m, img_qz_logv)
-
-        #img_qz = self.reparameterize(img_qz_m, img_qz_logv)
-        
-        img_qu_m = self.img_qu_m
-        img_qu_logv = self.img_qu_logv
-        img_qu = self.reparameterize(img_qu_m, img_qu_logv)
-
-        hidden = self.imgVAE_z_fc(img_qz)
-        reconstruction = self.imgVAE_dec(hidden)
-
-        return dict(reconstruction=reconstruction,
-                    img_z_mu=img_qz_m,
-                    img_z_logv=img_qz_logv,
-                    img_qz_m_ct=img_qz_m_ct,
-                    img_qz_logv_ct=img_qz_logv_ct,
-                    img_qc=img_qc,
-                    img_qc_m=img_qc_m,
-                    img_ql_m=img_ql_m,
-                    img_ql_logv=img_ql_logv,
-                    img_ql=img_ql,
-                    img_qu_m=img_qu_m,
-                    img_qu_logv=img_qu_logv,
-                    img_qu=img_qu,
-                    img_qs_logm=self.img_qs_logm,
-                    )
 
     def generative(
         self,
         inference_outputs,
         xs_k,
-        img_path_outputs
     ):
         """
         xs_k : torch.Tensor
@@ -597,285 +479,230 @@ class AVAE_PoE(nn.Module):
         """
         qz = inference_outputs['qz']
         ql = inference_outputs['ql']
-        ql_m = inference_outputs['ql_m']
-        ql_logv = inference_outputs['ql_logv']
-        img_ql = img_path_outputs['img_ql']
-        img_ql_m = img_path_outputs['img_ql_m']
-        img_ql_logv = img_path_outputs['img_ql_logv']
 
-        hidden = self.px_hidden_decoder(qz)
+        hidden = self.z_to_hidden_decoder(qz)
         px_scale = self.px_scale_decoder(hidden)
-
-        # TODO: summation in log space is valid for PoE, both `ql` & `img_ql` are on log space, add denominator: (prior var^-1 + inference var^-1)
-        # TODO: Verify DENOMINATOR (reference from PoE paper): PoE page 4
-        ql_j = ( ql_m/torch.exp(ql_logv) + img_ql_m/torch.exp(img_ql_logv) ) / ( 1/torch.exp(ql_logv) + 1/torch.exp(img_ql_logv) )
-        
-        self.px_rate = torch.exp(ql) * px_scale + self.eps
-        
-        pc_p = xs_k + self.eps#
+        px_rate = torch.exp(ql) * px_scale + self.eps
+        pc_p = xs_k + self.eps
 
         return dict(
-            px_rate=self.px_rate,
+            px_rate=px_rate,
             px_r=self.px_r,
+            px_scale=px_scale,
             pc_p=pc_p,
             xs_k=xs_k,
-
-            # DEBUG: save for numerical stability checks
-            img_ql=img_ql,
-            px_scale=px_scale,
         )
 
-    def predictor_POE(
+    def predictor_img(self, y):
+        """Inference & generative paths for image view"""
+        # --- Inference path ---
+        y_n = torch.log1p(y)
+
+        # q(z | y)
+        hidden_z = self.img_z_enc(y_n)
+        qz_m = self.img_z_enc_m(hidden_z)
+        qz_logv = self.img_z_enc_logv(hidden_z)
+        qz = self.reparameterize(qz_m, qz_logv)
+
+        # --- Generative path ---
+        hidden_y = self.img_z_to_hidden_decoder(qz)
+        py_m = self.py_mu_decoder(hidden_y)
+        py_logv = self.py_logv_decoder(hidden_y)
+
+        return dict(
+            # q(z | y)
+            qz_m_img=qz_m,
+            qz_logv_img=qz_logv,
+            qz_img=qz,
+
+            # p(y | z) (image reconst)
+            py_m=py_m,
+            py_logv=py_logv
+        )
+
+    def generative_img(self, z):
+        """Generative path of histology view given z"""
+        hidden_y = self.img_z_to_hidden_decoder(z)
+        py_m = self.py_mu_decoder(hidden_y)
+        py_logv = self.py_logv_decoder(hidden_y)
+        return dict(
+            py_m=py_m,
+            py_logv=py_logv
+        )
+
+    def predictor_poe(
         self,
         inference_outputs,
-        exp_path_outputs,
-        img_path_outputs,
+        img_outputs,
     ):
+        """Inference & generative paths for Joint view"""
 
-        mu_img = img_path_outputs['img_z_mu']
-        logvar_img = img_path_outputs['img_z_logv']
-
-        mu_exp = inference_outputs['qz_m']
-        logvar_exp = inference_outputs['qz_logv']
+        # Variational params. (expression branch)
         ql = inference_outputs['ql']
+        qz_m = inference_outputs['qz_m']
+        qz_logv = inference_outputs['qz_logv']
 
-        batch, _ = mu_exp.shape
+        # Variational params. (img branch)
+        qz_m_img = img_outputs['qz_m_img']
+        qz_logv_img = img_outputs['qz_logv_img']
 
-        var_poe = torch.div(1.,
-                            1 +
-                            torch.div(1., torch.exp(logvar_exp)) +
-                            torch.div(1., torch.exp(logvar_img))
-                            )
+        batch, _ = qz_m.shape
 
-        mu_poe = var_poe * (0 +
-                            mu_exp * torch.div(1., torch.exp(logvar_exp) + self.eps) +
-                            mu_img * torch.div(1., torch.exp(logvar_img) + self.eps)
-                            )
+        # PoE joint qz
+        # --- Joint posterior qz with PoE ---
+        qz_var_poe = torch.div(
+            1.,
+            torch.div(1., torch.exp(qz_logv)) + torch.div(1., torch.exp(qz_logv_img))
+        )
+        qz_m_poe = qz_var_poe * (
+            qz_m * torch.div(1., torch.exp(qz_logv) + self.eps) +
+            qz_m_img * torch.div(1., torch.exp(qz_logv_img) + self.eps)
+        )
+        qz = self.reparameterize(qz_m_poe, torch.log(qz_var_poe))  # Joint posterior
 
-        z = self.reparameterize(mu_poe, torch.log(var_poe + 0.001))
+        # PoE joint & view-specific decoders
+        hidden = self.z_to_hidden_poe_decoder(qz)
 
-        hidden = self.POE_z_fc(z)
+        # p(x | z_poe)
+        px_scale = self.px_scale_poe_decoder(hidden)
+        px_rate = torch.exp(ql) * px_scale + self.eps
 
-        px_scale_rna = self.POE_px_scale_decoder(hidden)
+        # p(y | z_poe)
+        py_m = self.py_mu_poe_decoder(hidden)
+        py_logv = self.py_logv_poe_decoder(hidden)
 
-        px_rate_poe = torch.exp(ql) * px_scale_rna
-        px_r_poe = self.px_r_poe
-        # reconstruction_rna_peri =  self.POE_dec_rna(torch.cat((x_peri,x_peri_sig),1))
+        return dict(
+            # PoE q(z | x, y)
+            qz_m=qz_m_poe,
+            qz_logv=torch.log1p(qz_var_poe),
+            qz=qz,
 
-        reconstruction_img = self.POE_dec_img(hidden)
-
-        return dict(px_rate_poe=px_rate_poe,
-                    px_r_poe=px_r_poe,
-                    reconstruction_img=reconstruction_img,
-                    mu_poe=mu_poe,
-                    var_poe=torch.log(var_poe + 0.001)
-                    )
+            # PoE p(x | z, l) & p(y | z)
+            px_rate=px_rate,
+            px_r=self.px_r_poe,
+            py_m=py_m,
+            py_logv=py_logv
+        )
 
     def get_loss(
         self,
         generative_outputs,
         inference_outputs,
-        img_path_outputs,
-        poe_path_outputs,
+        img_outputs,
+        poe_outputs,
         x,
-        x_peri,
         library,
-        adata_img,
+        y,
         device
     ):
-
-        beta = 0.001
-        alpha_c = 5
-
-        qc_m = inference_outputs["qc_m"]
-        qc = inference_outputs["qc"]
+        lambda_poe = 0.2
+        
+        # --- Parse variables ---
+        # Variational params
+        qc_m, qc = inference_outputs["qc_m"], inference_outputs["qc"]
         
         qs_logm = self.qs_logm
+        qu_m, qu_logv, qu = self.qu_m, self.qu_logv, inference_outputs["qu"]
         
-        qu = inference_outputs["qu"]
-        qu_m = inference_outputs["qu_m"]
-        qu_logv = inference_outputs["qu_logv"]
+        qz_m, qz_logv = inference_outputs["qz_m"], inference_outputs["qz_logv"]
+        ql_m, ql_logv = inference_outputs["ql_m"], inference_outputs['ql_logv']
 
-        qz_m = inference_outputs["qz_m"]
-        qz_logv = inference_outputs["qz_logv"]
-        #qz = inference_outputs["qz"]
+        qz_m_img, qz_logv_img = img_outputs['qz_m_img'], img_outputs['qz_logv_img']
+        qz_m_poe, qz_logv_poe = poe_outputs['qz_m'], poe_outputs['qz_logv']
 
-        ql_m = inference_outputs["ql_m"]
-        ql_logv = inference_outputs['ql_logv']
-        ql = inference_outputs['ql']
-
+        # Generative params
         px_rate = generative_outputs["px_rate"]
         px_r = generative_outputs["px_r"]
         pc_p = generative_outputs["pc_p"]
 
-        px_rate_poe = poe_path_outputs['px_rate_poe']
-        px_r_poe = poe_path_outputs['px_r_poe']
-        recon_poe_img = poe_path_outputs['reconstruction_img']
-        logvar_poe = poe_path_outputs['var_poe']
-        mu_poe = poe_path_outputs['mu_poe']
+        py_m, py_logv = img_outputs['py_m'], img_outputs['py_logv']
 
-        criterion = nn.MSELoss(reduction='sum')
-        reconst_loss_poe_rna = -NegBinom(px_rate_poe, torch.exp(px_r_poe)).log_prob(x).sum(-1).mean()
-
-        bce_loss_poe_img = criterion(recon_poe_img, adata_img)
-
-        Loss_IBJ = (torch.sum(reconst_loss_poe_rna) + bce_loss_poe_img) + \
-                   beta * (-0.5 * torch.sum(1 + logvar_poe - mu_poe.pow(2) - logvar_poe.exp()))
+        px_rate_poe = poe_outputs['px_rate']
+        px_r_poe = poe_outputs['px_r']
+        py_m_poe, py_logv_poe = poe_outputs['py_m'], poe_outputs['py_logv']
         
+
+        # --- Losses ---
+        # (1). Joint Loss
+        y_n = torch.log1p(y)
+        reconst_loss_x_poe = -NegBinom(px_rate_poe, torch.exp(px_r_poe)).log_prob(x).sum(-1).mean()
+        reconst_loss_y_poe = -Normal(py_m_poe, torch.exp(py_logv_poe/2)).log_prob(y_n).sum(-1).mean()
+
+        # prior: p(z | c, u)
+        pz_m = (qu.unsqueeze(0) * qc).sum(axis=1)
+        pz_std = (torch.exp(qs_logm / 2).unsqueeze(0) * qc).sum(axis=1)
+
+        kl_divergence_z_poe = kl(
+            Normal(qz_m_poe, torch.exp(qz_logv_poe / 2)),
+            Normal(pz_m, pz_std)
+        ).sum(dim=1).mean()
+
+        Loss_IBJ = reconst_loss_x_poe + reconst_loss_y_poe + kl_divergence_z_poe.to(device)
+
+        # (2). View-specific losses
+        # Expression view
         kl_divergence_u = kl(
             Normal(qu_m, torch.exp(qu_logv / 2)),
-            Normal(torch.zeros_like(qu_m), torch.ones_like(qu_m)*10)
+            Normal(torch.zeros_like(qu_m), torch.ones_like(qu_m) * 10)
         ).sum(dim=1).mean()
-        
-        
-        mean_pz = (qu.unsqueeze(0) * qc).sum(axis=1)
-        std_pz = (torch.exp(qs_logm / 2).unsqueeze(0) * qc).sum(axis=1)
-        #mean = torch.zeros_like(qz_m)
-        #scale = torch.ones_like(qz_logv)
 
         kl_divergence_z = kl(
             Normal(qz_m, torch.exp(qz_logv / 2)),
-            Normal(mean_pz, std_pz)
+            Normal(pz_m, pz_std)
         ).sum(dim=1).mean()
 
-        # Note: here library is the smoothed, log-lib from observations
-        kl_divergence_n = kl(
+        kl_divergence_l = kl(
             Normal(ql_m, torch.exp(ql_logv / 2)),
-            Normal(library, torch.ones_like(ql))
+            Normal(library, torch.ones_like(ql_m))
         ).sum(dim=1).mean()
 
-        # Only calc. kl divergence for `c` on anchor spots
-        
-        kl_divergence_c = torch.tensor([0.0]).to(device)
-        anchor_indices = x_peri[:, 0] == 1
-        na_indices = x_peri[:, 0] == 0
-        if anchor_indices.sum() > 0:
-            kl_divergence_c += kl(
-                Dirichlet(qc_m[anchor_indices] * self.alpha),
-                Dirichlet(pc_p[anchor_indices] * self.alpha)
-            ).mean()
-        if na_indices.sum() > 0 and self.reg_na:
-            pc_na = self.pc_na[:na_indices.shape[0]]  # edge condition: last batch w/ shape < batch-size
-            kl_divergence_c += kl(
-                Dirichlet(qc_m[na_indices] * self.alpha),
-                Dirichlet(pc_na[na_indices])
-            ).mean()
-
-        reconst_loss = -NegBinom(px_rate, torch.exp(px_r)).log_prob(x).sum(-1).mean()
-        
-        
-
-        loss_exp = reconst_loss.to(device) + kl_divergence_u.to(device)  + kl_divergence_z.to(device) + kl_divergence_c.to(device) + kl_divergence_n.to(device)
-
-        ## loss for images
-        img_z_mu = img_path_outputs['img_z_mu']
-        img_z_logv = img_path_outputs['img_z_logv']
-        recon_img = img_path_outputs['reconstruction']
-        img_qc = img_path_outputs['img_qc']
-        img_ql = img_path_outputs['img_ql']
-        img_ql_m = img_path_outputs['img_ql_m']
-        img_ql_logv = img_path_outputs['img_ql_logv']
-        img_qc_m = img_path_outputs['img_qc_m']
-        
-        img_qs_logm = self.img_qs_logm
-        img_qu = img_path_outputs["img_qu"]
-        img_qu_m = img_path_outputs["img_qu_m"]
-        img_qu_logv = img_path_outputs["img_qu_logv"]
-        
-        kl_divergence_u_img = kl(
-            Normal(img_qu_m, torch.exp(img_qu_logv / 2)),
-            Normal(torch.zeros_like(img_qu_m), torch.ones_like(img_qu_m))
-        ).sum(dim=1).mean()
-        
-        img_mean_pz = (img_qu.unsqueeze(0) * img_qc).sum(axis=1)
-        img_std_pz = (torch.exp(img_qs_logm / 2).unsqueeze(0) * img_qc).sum(axis=1)
-        
-        kl_divergence_z_img = kl(Normal(img_z_mu, torch.sqrt(torch.exp(img_z_logv/2))), Normal(img_mean_pz, img_std_pz)).sum(
-            dim=1
+        kl_divergence_c = kl(
+            Dirichlet(qc_m * self.alpha), # q(c | x; α) = Dir(α * λ(x))
+            Dirichlet(pc_p * self.alpha)
         ).mean()
 
-        kl_divergence_n_img = kl(
-            Normal(img_ql_m, torch.sqrt(torch.exp(img_ql_logv/2))),
-            Normal(library, torch.ones_like(ql))
+        reconst_loss_x = -NegBinom(px_rate, torch.exp(px_r)).log_prob(x).sum(-1).mean()
+        loss_exp = reconst_loss_x.to(device) + \
+                   kl_divergence_u.to(device) + \
+                   kl_divergence_z.to(device) + \
+                   kl_divergence_c.to(device) + \
+                   kl_divergence_l.to(device)
+
+        # Image view
+        kl_divergence_z_img = kl(
+            Normal(qz_m_img, torch.sqrt(torch.exp(qz_logv_img / 2))),
+            Normal(pz_m, pz_std)
         ).sum(dim=1).mean()
-        
-        kl_divergence_c_img = torch.tensor([0.0]).to(device)
-        
-        if anchor_indices.sum() > 0:
-            kl_divergence_c_img += kl(
-                Dirichlet(img_qc_m[anchor_indices] * self.alpha),
-                Dirichlet(pc_p[anchor_indices] * self.alpha)
-            ).mean()
-        if na_indices.sum() > 0 and self.reg_na:
-            pc_na = self.pc_na[:na_indices.shape[0]]  # edge condition: last batch w/ shape < batch-size
-            kl_divergence_c_img += kl(
-                Dirichlet(img_qc_m[na_indices] * self.alpha),
-                Dirichlet(pc_na[na_indices])
-            ).mean()
 
-        
-        bce_loss_img = criterion(recon_img, adata_img)
-        
-        bce_loss_img = bce_loss_img.to(device)
-        kl_divergence_z_img = kl_divergence_z_img.to(device)
-        kl_divergence_n_img = kl_divergence_n_img.to(device)
-        kl_divergence_c_img = kl_divergence_c_img.to(device)
-        kl_divergence_u_img = kl_divergence_u_img.to(device)
+        reconst_loss_y = -Normal(py_m, torch.exp(py_logv/2)).log_prob(y_n).sum(-1).mean()
+        loss_img = reconst_loss_y.to(device) + kl_divergence_z_img.to(device)
 
-        loss_img = torch.sum(bce_loss_img + kl_divergence_z_img + kl_divergence_n_img + kl_divergence_c_img + kl_divergence_u_img)
-
+        # PoE total loss: Joint Loss + a * \sum(marginal loss)
         Loss_IBM = (loss_exp + loss_img)
-        loss = Loss_IBJ + alpha_c * Loss_IBM
-        
+        loss = lambda_poe*Loss_IBJ + Loss_IBM
+        # loss = self.lambda_poe*Loss_IBJ + Loss_IBM
 
+        return (
+            # Total loss
+            loss,
 
-        return (loss,
-                reconst_loss,
-                kl_divergence_u,
-                kl_divergence_z,
-                kl_divergence_c,
-                kl_divergence_n
-                )
-    
+            # sum of marginal reconstruction losses
+            lambda_poe*(reconst_loss_x_poe+reconst_loss_y_poe) + (reconst_loss_x+reconst_loss_y), 
+
+            # KL divergence
+            kl_divergence_u,
+            lambda_poe*kl_divergence_z_poe + kl_divergence_z + kl_divergence_z_img,
+            kl_divergence_c,
+            kl_divergence_l
+        )
+
     @property
     def px_r(self):
         return F.softplus(self._px_r) + self.eps
 
-
-
-def valid_model(model):
-    
-    model.eval()
-
-    x_valid = torch.Tensor(np.array(adata_sample_filter.to_df()))
-    x_valid = x_valid.to(device)
-    gene_sig_exp_valid = torch.Tensor(np.array(gene_sig_exp_m)).to(device)
-    #library = torch.log(x_valid.sum(1)).unsqueeze(1)
-
-    inference_outputs =  model.inference(x_valid)
-    generative_outputs = model.generative(inference_outputs, gene_sig_exp_valid)
-
-    qz_m = inference_outputs["qz_m"].detach().numpy()
-    qc_m = inference_outputs["qc_m"].detach().numpy()
-    qc = inference_outputs["qc"].detach().numpy()
-    qz_logv = inference_outputs["qz_logv"].detach().numpy()
-    qz = inference_outputs["qz"].detach().numpy()
-    px_r = generative_outputs["px_r"].detach().numpy()
-    pc_p = generative_outputs["pc_p"].detach().numpy()
-    px_rate = generative_outputs["px_rate"].detach().numpy()
-    ql = inference_outputs["ql"].detach().numpy()
-    ql_m = inference_outputs["ql_m"].detach().numpy()
-    px = NegBinom(generative_outputs["px_rate"], torch.exp(generative_outputs["px_r"])).sample().detach().numpy()   
-
-    corr_map_qcm = np.zeros([3,3])
-    #corr_map_genesig = np.zeros([3,3])
-    #for i in range(3):
-    #    for j in range(3):
-    #        corr_map_qcm[i,j], _ = pearsonr(qc_m[:,i], proportions.iloc[:,j])
-            #corr_map_genesig[i,j], _ = pearsonr(gene_sig_exp_m.iloc[:,i], proportions.iloc[:,j])
-    
-
-    return 1/3*(corr_map_qcm[0,0]+corr_map_qcm[1,1]+corr_map_qcm[2,2])
+    @property
+    def px_r_poe(self):
+        return F.softplus(self._px_r_poe) + self.eps
 
 
 def train(
@@ -885,66 +712,66 @@ def train(
     optimizer,
 ):
     model.train()
-    
+
     running_loss = 0.0
     running_u = 0.0
     running_z = 0.0
     running_c = 0.0
-    running_n = 0.0
+    running_l = 0.0
     running_reconst = 0.0
     counter = 0
     corr_list = []
     for i, (x, xs_k, x_peri, library_i) in enumerate(dataloader):
-        
+
         counter += 1
         x = x.float()
         x = x.to(device)
         xs_k = xs_k.to(device)
         x_peri = x_peri.to(device)
         library_i = library_i.to(device)
-        inference_outputs = model.inference(x)
 
-        generative_outputs = model.generative(inference_outputs, xs_k, x_peri)
+        inference_outputs = model.inference(x)
+        generative_outputs = model.generative(inference_outputs, xs_k)
+
+        # Check for NaNs
+        #if torch.isnan(loss) or any(torch.isnan(p).any() for p in model.parameters()):
+        if any(torch.isnan(p).any() for p in model.parameters()):
+            LOGGER.warning('NaNs detected in model parameters, Skipping current epoch...')
+            continue
 
         (loss,
          reconst_loss,
          kl_divergence_u,
          kl_divergence_z,
          kl_divergence_c,
-         kl_divergence_n
-        ) = model.get_loss(generative_outputs,
-                           inference_outputs,                                           
-                           x,
-                           x_peri,
-                           library_i,
-                           device
-                       )
-        
+         kl_divergence_l
+         ) = model.get_loss(
+            generative_outputs,
+            inference_outputs,
+            x,
+            library_i,
+            device
+            )
+
         optimizer.zero_grad()
-        
-        # Check for NaNs
-        if torch.isnan(loss) or any(torch.isnan(p).any() for p in model.parameters()):
-            LOGGER.warning('NaNs detected in model parameters, Skipping current epoch...')
-            continue
-        
         loss.backward()
         optimizer.step()
-        
+
         running_loss += loss.item()
-        running_reconst +=reconst_loss.item()
-        running_u +=kl_divergence_u.item()
-        running_z +=kl_divergence_z.item()
-        running_c +=kl_divergence_c.item()
-        running_n +=kl_divergence_n.item()    
+        running_reconst += reconst_loss.item()
+        running_u += kl_divergence_u.item()
+        running_z += kl_divergence_z.item()
+        running_c += kl_divergence_c.item()
+        running_l += kl_divergence_l.item()
 
     train_loss = running_loss / counter
     train_reconst = running_reconst / counter
     train_u = running_u / counter
     train_z = running_z / counter
     train_c = running_c / counter
-    train_n = running_n / counter
+    train_l = running_l / counter
 
-    return train_loss, train_reconst, train_u, train_z, train_c, train_n, corr_list
+    return train_loss, train_reconst, train_u, train_z, train_c, train_l, corr_list
 
 
 def train_poe(
@@ -953,14 +780,12 @@ def train_poe(
     device,
     optimizer,
 ):
-    # TODO: add `u` in PoE integration 
-    
     model.train()
 
     running_loss = 0.0
     running_z = 0.0
     running_c = 0.0
-    running_n = 0.0
+    running_l = 0.0
     running_u = 0.0
     running_reconst = 0.0
     counter = 0
@@ -968,52 +793,48 @@ def train_poe(
     for i, (x,
             x_peri,
             library_i,
-            adata_img,
+            img,
             data_loc,
             xs_k,
             ) in enumerate(dataloader):
         counter += 1
+        mini_batch, _ = x.shape
+
         x = x.float()
         x = x.to(device)
         x_peri = x_peri.to(device)
         library_i = library_i.to(device)
         xs_k = xs_k.to(device)
 
-        mini_batch, _ = x.shape
-        adata_img = adata_img.reshape(mini_batch, -1).float()
-        adata_img = adata_img / 255
-        adata_img = adata_img.to(device)
+        img = img.reshape(mini_batch, -1).float()
+        img = img.to(device)
 
-        # gene expression, 1D data
-        inference_outputs = model.inference(x)
+        inference_outputs = model.inference(x)  # inference for 1D expr. data
+        generative_outputs = model.generative(inference_outputs, xs_k)
+        img_outputs = model.predictor_img(img)  # inference & generative for 2D img. data
+        poe_outputs = model.predictor_poe(inference_outputs, img_outputs)  # PoE generative outputs
 
-        # image, 2D data
-        img_path_outputs = model.predict_imgVAE(adata_img)
-
-        generative_outputs = model.generative(inference_outputs, xs_k, img_path_outputs)
-
-        # POE
-        poe_path_outputs = model.predictor_POE(inference_outputs,
-                                               generative_outputs,
-                                               img_path_outputs
-                                               )
+        # Check for NaNs
+        if any(torch.isnan(p).any() for p in model.parameters()):
+            LOGGER.warning('NaNs detected in model parameters, Skipping current epoch...')
+            continue
 
         (loss,
          reconst_loss,
          kl_divergence_u,
          kl_divergence_z,
          kl_divergence_c,
-         kl_divergence_n
-         ) = model.get_loss(generative_outputs,
-                            inference_outputs,
-                            img_path_outputs,
-                            poe_path_outputs,
-                            x,
-                            x_peri,
-                            library_i,
-                            adata_img,
-                            device
-                            )
+         kl_divergence_l
+         ) = model.get_loss(
+            generative_outputs,
+            inference_outputs,
+            img_outputs,
+            poe_outputs,
+            x,
+            library_i,
+            img,
+            device
+        )
 
         optimizer.zero_grad()
         loss.backward()
@@ -1022,22 +843,19 @@ def train_poe(
         running_reconst += reconst_loss.item()
         running_z += kl_divergence_z.item()
         running_c += kl_divergence_c.item()
-        running_n += kl_divergence_n.item()
+        running_l += kl_divergence_l.item()
         running_u += kl_divergence_u.item()
 
         optimizer.step()
 
-        # corr_list.append(valid_model(model))
-
     train_loss = running_loss / counter
     train_reconst = running_reconst / counter
-    #train_u = 0  # TMP, to be deleted after updating PoE model with u->c->z->x
     train_z = running_z / counter
     train_c = running_c / counter
-    train_n = running_n / counter
+    train_l = running_l / counter
     train_u = running_u / counter
 
-    return train_loss, train_reconst, train_u, train_z, train_c, train_n, corr_list
+    return train_loss, train_reconst, train_u, train_z, train_c, train_l, corr_list
 
 
 # Reference:
@@ -1074,8 +892,8 @@ class NegBinom(Distribution):
 
     def sample(self):
         lambdas = Gamma(
-            concentration=self.theta+self.eps,
-            rate=(self.theta+self.eps) / (self.mu+self.eps),
+            concentration=self.theta + self.eps,
+            rate=(self.theta + self.eps) / (self.mu + self.eps),
         ).rsample()
 
         x = Poisson(lambdas).sample()
@@ -1091,14 +909,14 @@ class NegBinom(Distribution):
              x * (torch.log(self.mu + self.eps) - torch.log(self.theta + self.mu + self.eps))
 
         return ll
-    
-    
+
+
 def model_eval(
     model,
     adata,
     visium_args,
     poe=False,
-    device=torch.device('cpu')
+    device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 ):
     model.eval()
     model = model.to(device)
@@ -1109,12 +927,25 @@ def model_eval(
 
     with torch.no_grad():
         inference_outputs = model.inference(x_in)
+        generative_outputs = model.generative(inference_outputs, sig_means)
         if poe:
             img_in = torch.Tensor(visium_args.get_img_patches()).float().to(device)
-            img_outputs = model.predict_imgVAE(img_in)
-            generative_outputs = model.generative(inference_outputs, sig_means, img_outputs)
-        else:
-            generative_outputs = model.generative(inference_outputs, sig_means, anchor_idx)
+            img_outputs = model.predictor_img(img_in)
+            poe_outputs = model.predictor_poe(inference_outputs, img_outputs)
+
+            # Parse image view / PoE inference & generative outputs
+            # Save to `inference_outputs` & `generative_outputs`
+            for k, v in img_outputs.items():
+                if 'q' in k:
+                    inference_outputs[k] = v
+                else:
+                    generative_outputs[k] = v
+
+            for k, v in poe_outputs.items():
+                if 'q' in k:
+                    inference_outputs[k+'_poe'] = v
+                else:
+                    generative_outputs[k+'_poe'] = v
 
     try:
         px = NegBinom(
@@ -1135,7 +966,7 @@ def model_eval(
 
     for rv in generative_outputs.keys():
         try:
-            if rv == 'px_r' or rv == 'reconstruction':  # Posterior avg. znorm signature means
+            if rv == 'px_r' or rv == 'px_r_poe':
                 val = generative_outputs[rv].data.detach().cpu().numpy().squeeze()
                 adata.varm[rv] = val
             else:
@@ -1151,37 +982,26 @@ def model_ct_exp(
     model,
     adata,
     visium_args,
-    poe=False,
-    device=torch.device('cpu')
+    device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 ):
     """
-    Obtain predicted cell-type specific expression in each spot
+    Obtain generative cell-type specific expression in each spot (after model training)
     """
+    sig_means = torch.Tensor(visium_args.sig_mean_norm.values).to(device)
+    anchor_idx = torch.Tensor(visium_args.pure_idx).to(device)
+    x_in = torch.Tensor(adata.to_df().values).to(device)
+
     model.eval()
     model = model.to(device)
     pred_exprs = {}
-    
+
     for ct_idx, cell_type in enumerate(adata.uns['cell_types']):
-        model.eval()
-
-        x_in = torch.Tensor(adata.to_df().values).to(device)
-        sig_means = torch.Tensor(visium_args.sig_mean_norm.values).to(device)
-        anchor_idx = torch.Tensor(visium_args.pure_idx).to(device)
-
-        # Get inference outputs
+        # Get inference outputs for the given cell type
         inference_outputs = model.inference(x_in)
         inference_outputs['qz'] = inference_outputs['qz_m_ct'][:, ct_idx, :]
 
         # Get generative outputs
-        if poe:
-            img_outputs = model.predict_imgVAE(
-                torch.Tensor(
-                    visium_args.get_img_patches()
-                ).float().to(device)
-            )
-            generative_outputs = model.generative(inference_outputs, sig_means, img_outputs)
-        else:
-            generative_outputs = model.generative(inference_outputs, sig_means, anchor_idx)
+        generative_outputs = model.generative(inference_outputs, sig_means)
 
         px = NegBinom(
             mu=generative_outputs["px_rate"],
@@ -1195,3 +1015,42 @@ def model_ct_exp(
         adata.obsm[cell_type + '_inferred_exprs'] = px
 
     return pred_exprs
+
+
+def model_ct_img(
+    model,
+    adata,
+    visium_args,
+    device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+):
+    """
+    Obtain generative cell-type specific images (after model training)
+    """
+    x_in = torch.Tensor(adata.to_df().values).to(device)
+    y_in = torch.Tensor(visium_args.get_img_patches()).float().to(device)
+
+    model.eval()
+    model = model.to(device)
+    ct_imgs = {}
+    ct_imgs_poe = {}
+
+    for ct_idx, cell_type in enumerate(adata.uns['cell_types']):
+        # Get inference outputs for the given cell type
+        inference_outputs = model.inference(x_in)
+        qz_m_ct, qz_logv_ct = inference_outputs['qz_m_ct'][:, ct_idx, :], inference_outputs['qz_logv_ct'][:, ct_idx, :]
+        qz_ct = model.reparameterize(qz_m_ct, qz_logv_ct)
+        inference_outputs['qz_m'], inference_outputs['qz'] = qz_m_ct, qz_ct
+
+        # Generate cell-type specific low-dim representations (z)
+        img_outputs = model.predictor_img(y_in)
+        qz_m_ct_img, qz_logv_ct_img = img_outputs['qz_m_ct_img'][:, ct_idx, :], img_outputs['qz_logv_ct_img'][:, ct_idx, :]
+        qz_ct_img = model.reparameterize(qz_m_ct_img, qz_logv_ct_img)
+        img_outputs['qz_m_img'], img_outputs['qz_img'] = qz_m_ct_img, qz_ct_img
+        generative_outputs_img = model.generative_img(qz_ct_img)
+
+        poe_outputs = model.predictor_poe(inference_outputs, img_outputs)
+
+        ct_imgs[cell_type] = generative_outputs_img['py_m'].detach().cpu().numpy()
+        ct_imgs_poe[cell_type] = poe_outputs['py_m'].detach().cpu().numpy()
+
+    return ct_imgs, ct_imgs_poe

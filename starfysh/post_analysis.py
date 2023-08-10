@@ -18,15 +18,18 @@ def get_z_umap(qz_m):
     return u
 
 
-def plot_type_all(inference_outputs,u, proportions):
+def plot_type_all(inference_outputs,u, proportions, figsize=(4, 4)):
     qc_m = inference_outputs["qc_m"].detach().cpu().numpy()
     group_c = np.argmax(qc_m,axis=1)
-    plt.figure(dpi=500,figsize=(2,2))
+    
+    fig, ax = plt.subplots(figsize=figsize, dpi=300)
     cmaps = ['Blues','Greens','Reds','Oranges','Purples']
     for i in range(proportions.shape[1]):
-        plt.scatter(u[group_c==i,0],u[group_c==i,1],s=1,c = qc_m[group_c==i,i], cmap=cmaps[i])
-    plt.legend(proportions.columns,loc='right', bbox_to_anchor=(2.2,0.5),)
-    plt.axis('off')
+        ax.scatter(u[group_c==i,0],u[group_c==i,1],s=1,c = qc_m[group_c==i,i], cmap=cmaps[i])
+    ax.legend(proportions.columns,loc='right', bbox_to_anchor=(2.2,0.5),)
+    ax.axis('off')
+    
+    return fig, ax
     
     
 def get_corr_map(inference_outputs,  proportions):

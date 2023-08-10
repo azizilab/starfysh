@@ -135,11 +135,6 @@ class ArchetypalAnalysis:
                 break
         self.archetype = archetypes[-1]
 
-        if self.U is None:
-            self.U = self._get_umap(ndim=2)
-        #if self.U_3d is None:
-        #    self.U_3d = self._get_umap(ndim=3)
-
         # Merge raw archetypes to get major archetypes
         if self.verbose:
             LOGGER.info('{0} variance explained by raw archetypes.\nMerging raw archetypes within {1} NNs to get major archetypes'.format(np.round(ev, 4), r))
@@ -163,7 +158,7 @@ class ArchetypalAnalysis:
         n_archetypes = self.archetype.shape[0]
         X_concat = np.vstack([self.count, self.archetype])
         nbrs = NearestNeighbors(n_neighbors=r).fit(X_concat)
-        nn_graph = nbrs.kneighbors(X_concat)[1][self.n_spots:, 1:] # retrieve NN-graph of only archetype spots
+        nn_graph = nbrs.kneighbors(X_concat)[1][self.n_spots:, 1:]  # retrieve NN-graph of only archetype spots
 
         idxs_to_remove = set()
         arche_dict = {}
@@ -286,14 +281,9 @@ class ArchetypalAnalysis:
         )
         overlaps_df = pd.DataFrame(overlaps, index=anchor_df.columns, columns=self.arche_df.columns)
 
-        # archetype-anchor mapping: stable matching
-        map_dict = {}
-        for k in range(overlaps.shape[0]):
-            list_ = np.argsort(overlaps[k])[::-1]
-            for i in list_:
-                if np.argsort(overlaps[:, i])[::-1][0] == k:
-                    map_dict[anchor_df.columns[k]] = self.arche_df.columns[i]
-                    break
+        # Stable marriage matching: archetype -> anchor clusters
+        map_idx_df = self._stable_matching(overlaps)
+        map_dict = {overlaps_df.index[k]: overlaps_df.columns[v] for k, v in map_idx_df.items()}
         return overlaps_df, map_dict
 
     def find_distant_archetypes(self, anchor_df, map_dict=None, n=3):
@@ -361,6 +351,27 @@ class ArchetypalAnalysis:
             nbrs[i] = np.argsort(dist)[:n_nbrs]
 
         return nbrs
+
+    def _stable_matching(self, A):
+        matching = {}
+        free_rows, free_cols = set(range(A.shape[0])), set(range(A.shape[1]))
+
+        while free_rows:
+            i = free_rows.pop()
+            for j in np.argsort(A[i])[::-1]:  # iter cols in decreasing vals
+                if j in free_cols:
+                    matching[i] = j
+                    free_cols.remove(j)
+                    break
+                else:  # Check matched cols & compare tie-breaking conditions
+                    i_prime = next(k for k, v in matching.items() if v == j)
+                    if A[i, j] > A[i_prime, j]:
+                        matching[i] = j
+                        free_rows.add(i_prime)
+                        del matching[i_prime]
+                        break
+
+        return matching
     
     # -------------------
     # Plotting functions
@@ -403,6 +414,10 @@ class ArchetypalAnalysis:
         colors = cm.tab20(np.linspace(0, 1, n_archetypes))
 
         if do_3d:
+            if self.U_3d is None:
+                self.U_3d = self._get_umap(ndim=3)
+            U = self.U_3d
+
             fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=200, subplot_kw=dict(projection='3d'))
 
             # Color background spots & archetypal spots
@@ -464,7 +479,10 @@ class ArchetypalAnalysis:
             ax.view_init(20, 135)
             
         else: # 2D plot
-            
+            if self.U is None:
+                self.U = self._get_umap(ndim=2)
+            U = self.U
+
             fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=300)
 
             # Color background & archetypal spots
@@ -510,14 +528,12 @@ class ArchetypalAnalysis:
         arche_lbls=None,
         lgd_ncol=2,
         do_3d=False
-                                       
     ):
         """
         Joint display subset of anchor spots & archetypal spots (to visualize overlapping degree)
         """
         assert self.arche_df is not None, "Please compute archetypes & assign nearest-neighbors first!"
 
-        U = self.U_3d if do_3d else self.U
         cell_types = anchor_df.columns if cell_types is None else np.intersect1d(cell_types, anchor_df.columns)
         arche_lbls = self.arche_df.columns if arche_lbls is None else np.intersect1d(arche_lbls, self.arche_df.columns)
         u_centroids = U[self.arche_df[arche_lbls]].mean(0)        
@@ -526,6 +542,10 @@ class ArchetypalAnalysis:
         arche_colors = cm.RdBu_r(np.linspace(0, 1, len(arche_lbls)))
 
         if do_3d:
+            if self.U_3d is None:
+                self.U_3d = self._get_umap(ndim=3)
+            U = self.U_3d
+
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 5), dpi=300, subplot_kw=dict(projection='3d'))
 
             # Display anchors
@@ -573,6 +593,10 @@ class ArchetypalAnalysis:
             lgd2 = ax2.legend(loc='lower center', bbox_to_anchor=(0.5, -1), ncol=lgd_ncol)
 
         else:
+            if self.U is None:
+                self.U = self._get_umap(ndim=2)
+            U = self.U
+
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3), dpi=300)
 
             # Display anchors

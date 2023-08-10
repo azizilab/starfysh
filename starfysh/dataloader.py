@@ -56,10 +56,12 @@ class VisiumPoEDataSet(VisiumDataset):
     ):
 
         super(VisiumPoEDataSet, self).__init__(adata, args)
-        self.image = args.img
+        self.image = args.img.astype(np.float64)
         self.map_info = args.map_info
         self.r = args.params['patch_r']
         self.spot_img_stack = []
+
+        self.density_std = args.img.std()
 
         assert self.image is not None,\
             "Empty paired H&E image," \
@@ -68,7 +70,8 @@ class VisiumPoEDataSet(VisiumDataset):
 
         # Retrieve image patch around each spot
         scalef = args.scalefactor['tissue_hires_scalef']  # High-res scale factor
-        h, w, d = self.image.shape
+        h, w = self.image.shape[:2]
+        patch_dim = (self.r*2, self.r*2, 3) if self.image.ndim == 3 else (self.r*2, self.r*2)
 
         for i in range(len(self.expr_mat)):
             xc = int(np.round(self.map_info.iloc[i]['imagecol'] * scalef))
@@ -82,7 +85,7 @@ class VisiumPoEDataSet(VisiumDataset):
             left = max(0, self.r-xc)
             right = w if w > (xc+self.r) else w-(xc+self.r)
 
-            patch = np.zeros((self.r*2, self.r*2, d))
+            patch = np.zeros(patch_dim)
             patch[top:bottom, left:right] = self.image[yl:yr, xl:xr]
             self.spot_img_stack.append(patch)
 
@@ -95,10 +98,11 @@ class VisiumPoEDataSet(VisiumDataset):
         sample = torch.Tensor(
             np.array(self.expr_mat.iloc[idx, :], dtype='float')
         )
-        return (sample,   
+        spot_img_stack = self.spot_img_stack[idx]
+        return (sample,
                 torch.Tensor(self.anchor_idx[idx, :]),
                 torch.Tensor(self.library_n[idx, None]),
-                self.spot_img_stack[idx],
+                spot_img_stack,
                 self.map_info.index[idx],
                 torch.Tensor(self.gexp.iloc[idx, :]),
                )

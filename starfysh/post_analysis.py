@@ -18,10 +18,11 @@ def get_z_umap(qz_m):
     return u
 
 
-def plot_type_all(inference_outputs,u, proportions):
+def plot_type_all(inference_outputs,u, proportions, figsize=(4, 4)):
     qc_m = inference_outputs["qc_m"].detach().cpu().numpy()
     group_c = np.argmax(qc_m,axis=1)
-    plt.figure(dpi=500,figsize=(2,2))
+    
+    fig, ax = plt.subplots(figsize=figsize, dpi=300)
     cmaps = ['Blues','Greens','Reds','Oranges','Purples']
     for i in range(proportions.shape[1]):
         plt.scatter(u[group_c==i,0],u[group_c==i,1],s=1,c = qc_m[group_c==i,i], cmap=cmaps[i])

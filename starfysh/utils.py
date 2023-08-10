@@ -13,6 +13,7 @@ from scipy.stats import median_abs_deviation
 from torch.utils.data import DataLoader
 
 import sys
+import histomicstk as htk
 from skimage import io
 
 # Module import
@@ -63,10 +64,11 @@ class VisiumArguments:
         self.params = {
             'sample_id': 'ST', 
             'n_anchors': int(adata.shape[0]),
-            'patch_r': 13,
+            'patch_r': 16,
             'sig_version': 'gene_score',
             'signif_level': 3,
             'window_size': 3,
+            'n_img_chan': 1
         }
 
         # Update parameters for library smoothing & anchor spot identification
@@ -315,6 +317,8 @@ class VisiumArguments:
                 'scalefactors': self.scalefactor
             },
         }
+        if self.img is not None and self.img.ndim == 3: # Update number of image channels
+            self.params['n_img_chan'] = 3
 
         self.adata.obsm['spatial'] = self.map_info[['imagecol', 'imagerow']].values
         self.adata_norm.obsm['spatial'] = self.map_info[['imagecol', 'imagerow']].values
@@ -336,7 +340,7 @@ class VisiumArguments:
         #adata = self.adata_norm.copy()
         for cell_type in self.gene_sig.columns:
             sig = self.gene_sig[cell_type][~pd.isna(self.gene_sig[cell_type])].to_list()
-            sc.tl.score_genes(adata, sig, score_name=cell_type+'_score')
+            sc.tl.score_genes(adata, sig, use_raw=False, score_name=cell_type+'_score')
             
         gsea_df = adata.obs[[cell_type+'_score' for cell_type in self.gene_sig.columns]]
         gsea_df.columns = self.gene_sig.columns
@@ -356,18 +360,16 @@ def init_weights(module):
 
 
 def run_starfysh(
-        visium_args,
-        test_prior = 0.2,
-        n_repeats=3,
-        lr=1e-3,
-        epochs=100,
-        batch_size=32,
-        alpha_mul=50,
-        reg_nonanchors=True,  # DEBUG: whether to regularize for non-anchors
-        poe=False,
-        device=torch.device('cpu'),
-        verbose=True,
-        seed=0,
+    visium_args,
+    n_repeats=3,
+    lr=1e-3,
+    epochs=100,
+    batch_size=32,
+    alpha_mul=50,
+    poe=False,
+    device=torch.device('cpu'),
+    seed=0,
+    verbose=True
 ):
     """
     Wrapper to run starfysh deconvolution.
@@ -430,7 +432,7 @@ def run_starfysh(
                 patch_r=visium_args.params['patch_r'],
                 win_loglib=win_loglib,
                 alpha_mul=alpha_mul,
-                batch_size=batch_size,
+                n_img_chan=visium_args.params['n_img_chan']
             )
             # Update patched & flattened image patches
             visium_args._update_img_patches(trainset)
@@ -440,10 +442,6 @@ def run_starfysh(
                 gene_sig=sig_mean_norm,
                 win_loglib=win_loglib,
                 alpha_mul=alpha_mul,
-                batch_size=batch_size,
-                reg_nonanchors=reg_nonanchors,
-                test_prior=test_prior,
-                seed=seed,
             )
 
         model = model.to(device)
@@ -462,7 +460,7 @@ def run_starfysh(
             
         model.apply(init_weights)
         optimizer = optim.Adam(model.parameters(), lr=lr)
-        scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
+        scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.98)
         
         for epoch in range(epochs):
             result = train_func(model, trainloader, device, optimizer)
@@ -483,7 +481,7 @@ def run_starfysh(
             loss_dict['n'].append(loss_n)
 
             if (epoch + 1) % 10 == 0 and verbose:
-                LOGGER.info("Epoch[{}/{}], train_loss: {:.4f}, train_reconst: {:.4f}, train_u: {:.4f},train_z: {:.4f},train_c: {:.4f},train_n: {:.4f}".format(
+                LOGGER.info("Epoch[{}/{}], train_loss: {:.4f}, train_reconst: {:.4f}, train_u: {:.4f},train_z: {:.4f},train_c: {:.4f},train_l: {:.4f}".format(
                     epoch + 1, epochs, loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n)
                 )
             scheduler.step()
@@ -732,9 +730,10 @@ def preprocess_img(
             )
 
             # adata_image = (adata_image-adata_image.min())/(adata_image.max()-adata_image.min())
-            adata_image_norm = (adata_image * 255).astype(np.uint8)
+            if adata_image.max() <= 1:
+                adata_image = (adata_image * 255).astype(np.uint8)
+    
             stain_color_map = htk.preprocessing.color_deconvolution.stain_color_map
-            # specify stains of input image
             stains = ['hematoxylin',  # nuclei stain
                       'eosin',  # cytoplasm stain
                       'null']  # set to null if input contains only two stains
@@ -742,22 +741,21 @@ def preprocess_img(
             W = np.array([stain_color_map[st] for st in stains]).T
 
             # perform standard color deconvolution
-            imDeconvolved = htk.preprocessing.color_deconvolution.color_deconvolution(adata_image_norm, W)
+            imDeconvolved = htk.preprocessing.color_deconvolution.color_deconvolution(adata_image, W)
 
             adata_image_h = imDeconvolved.Stains[:,:,0]
-            adata_image_e = imDeconvolved.Stains[:,:,2]
+            #adata_image_e = imDeconvolved.Stains[:,:,2]
 
-            adata_image_h = ((adata_image_h - adata_image_h.min()) / (adata_image_h.max()-adata_image_h.min()) *255).astype(np.uint8)
-            adata_image_e = ((adata_image_e - adata_image_e.min()) / (adata_image_e.max()-adata_image_e.min()) *255).astype(np.uint8)
+            adata_image_h = (adata_image_h - adata_image_h.min()) / (adata_image_h.max()-adata_image_h.min()) 
+            adata_image_h = (adata_image_h*255).astype(np.uint8)
+            #adata_image_e = (adata_image_e - adata_image_e.min()) / (adata_image_e.max()-adata_image_e.min()) 
+            #adata_image_e = (adata_image_e*255).astype(np.uint8)
 
-            clahe = cv2.createCLAHE(clipLimit=10.0, tileGridSize=(8, 8))
-
+            clahe = cv2.createCLAHE(clipLimit=255, tileGridSize=(8, 8))
             adata_image_h = clahe.apply(adata_image_h)
-            adata_image_e = clahe.apply(adata_image_e)
-
-            adata_image_h = (adata_image_h - adata_image_h.min()) / (adata_image_h.max() - adata_image_h.min())
-            adata_image_e = (adata_image_e - adata_image_e.min()) / (adata_image_e.max() - adata_image_e.min())
-
+            #adata_image_e = clahe.apply(adata_image_e)
+            
+            adata_image = adata_image_h
         else:
             adata_image = io.imread(os.path.join(data_path, sample_id, 'spatial', 'tissue_hires_image.png'))
             # adata_image = (adata_image-adata_image.min())/(adata_image.max()-adata_image.min())
@@ -768,7 +766,6 @@ def preprocess_img(
     f = open(os.path.join(data_path, sample_id, 'spatial', 'scalefactors_json.json', ))
     json_info = json.load(f)
     f.close()
-    tissue_hires_scalef = json_info['tissue_hires_scalef']
 
     tissue_position_list = pd.read_csv(os.path.join(data_path, sample_id, 'spatial', 'tissue_positions_list.csv'), header=None, index_col=0)
     tissue_position_list = tissue_position_list.loc[adata_index, :]
@@ -868,11 +865,11 @@ def append_sigs(gene_sig, factor, sigs, n_genes=5):
 
 
 def refine_anchors(
-        visium_args,
-        aa_model,
-        thld=0.35,
-        n_genes=5,
-        n_iters=1
+    visium_args,
+    aa_model,
+    thld=0.35,
+    n_genes=5,
+    n_iters=1
 ):
     """
     Refine anchor spots & marker genes with archetypal analysis. We append DEGs
@@ -957,5 +954,25 @@ def extract_feature(adata, key):
     return adata_dummy
 
 
+def get_reconst_img(args, img_patches):
+    """
+    Reconst original histology image (H x W) from the given patched image (S x P)
+    """
+    reconst_img = np.zeros_like(args.img, dtype=np.float64)
+    r = args.params['patch_r']
+    patch_size = (r * 2, r * 2, 3) if args.img.ndim == 3 else (r * 2, r * 2)
+    scale_factor = args.scalefactor['tissue_hires_scalef']
+    img_col = args.map_info['imagecol'] * scale_factor
+    img_row = args.map_info['imagerow'] * scale_factor
+
+    for i in range(len(img_col)):
+        patch_y = slice(int(img_row[i]) - r, int(img_row[i]) + r)
+        patch_x = slice(int(img_col[i]) - r, int(img_col[i]) + r)
+
+        sy, sx = reconst_img[patch_y, patch_x].shape[:2]
+        img_patch = img_patches[i].reshape(patch_size)
+        reconst_img[patch_y, patch_x] = img_patch[:sy, :sx]  # edge patch cases
+
+    return reconst_img
 
     

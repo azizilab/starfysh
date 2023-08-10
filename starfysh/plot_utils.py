@@ -203,6 +203,14 @@ def _dist2gt(A, A_gt):
     return np.linalg.norm(A - A_gt, ord='fro')
 
 
+def _calc_rmse(y_true, y_pred):
+    """Calculate per-spot RMSE between ground-truth & predicted proportions"""
+    assert y_true.shape == y_pred.shape, "proportion matrices need to be the same shape to calculate RMSE"   
+    n_cts = y_ture.shape[1]
+    rmse = np.sqrt(((y_true.values-y_pred.values)**2).sum(1) / n_cts)
+    return rmse
+
+
 def bootstrap_dists(corr_df, corr_gt_df, n_iter=1000, size=10):
     """
     Calculate the avg. distance to ground-truth (sub)-matrix based on random subsampling
@@ -227,7 +235,7 @@ def disp_rmse(y_true, y_preds, labels, title=None, return_rmse=False):
     Boxplot of per-spot RMSEs for each prediction
     """
     n_spots, n_cts = y_true.shape
-    rmses = np.array([
+    rmse = np.array([
         np.sqrt(((y_true.values-y_pred.values)**2).sum(1) / n_cts)
         for y_pred in y_preds
     ])
@@ -295,7 +303,7 @@ def disp_corr(
 
     if title is not None:
         # ax.set_title(title+'\n'+'Distance = %.3f' % (dist2identity(corr)))
-        ax.set_title(title + '\n' + 'Distance = %.3f' % (_dist2gt(corr, gt_corr)))
+        ax.set_title(title + '\n' + 'Distance = %.3f' % (_calc_rmse(y_true, y_pred).mean()))
 
     for item in (ax.get_xticklabels() + ax.get_yticklabels()):
         item.set_fontsize(12)

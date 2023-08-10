@@ -365,9 +365,10 @@ def run_starfysh(
     lr=1e-3,
     epochs=100,
     batch_size=32,
-    alpha_mul=20,
+    alpha_mul=50,
     poe=False,
     device=torch.device('cpu'),
+    seed=0,
     verbose=True
 ):
     """
@@ -396,7 +397,7 @@ def run_starfysh(
     loss : np.ndarray
         Training losses
     """
-    np.random.seed(0)
+    np.random.seed(seed)
 
     # Loading parameters
     adata = visium_args.adata

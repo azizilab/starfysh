@@ -20,7 +20,6 @@ from starfysh import LOGGER
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 random.seed(0)
-torch.manual_seed(0)
 np.random.seed(0)
 
 
@@ -39,7 +38,8 @@ class AVAE(nn.Module):
         adata,
         gene_sig,
         win_loglib,
-        alpha_mul=20,
+        alpha_mul=50,
+        seed=0,
         device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ) -> None:
         """
@@ -62,7 +62,9 @@ class AVAE(nn.Module):
             signature prior's confidence
         """
         super().__init__()
-        self.win_loglib = torch.Tensor(win_loglib)
+        torch.manual_seed(seed)
+        
+        self.win_loglib=torch.Tensor(win_loglib)
 
         self.c_in = adata.shape[1]  # c_in : Num. input features (# input genes)
         self.c_bn = 10  # c_bn : latent number, numbers of bottle-necks
@@ -283,6 +285,7 @@ class AVAE_PoE(nn.Module):
         win_loglib,
         alpha_mul=20,
         n_img_chan=1,
+        seed=0,
         device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ) -> None:
         """
@@ -309,6 +312,7 @@ class AVAE_PoE(nn.Module):
 
         """
         super(AVAE_PoE, self).__init__()
+        torch.manual_seed(seed)
 
         self.win_loglib = torch.Tensor(win_loglib)
         self.patch_r = patch_r

@@ -759,6 +759,8 @@ def train(
 
         optimizer.zero_grad()
         loss.backward()
+        
+        nn.utils.clip_grad_norm_(model.parameters(), 5)
         optimizer.step()
 
         running_loss += loss.item()
@@ -843,15 +845,16 @@ def train_poe(
         optimizer.zero_grad()
         loss.backward()
 
+        nn.utils.clip_grad_norm_(model.parameters(), 5)
+        optimizer.step()
+
         running_loss += loss.item()
         running_reconst += reconst_loss.item()
         running_z += kl_divergence_z.item()
         running_c += kl_divergence_c.item()
         running_l += kl_divergence_l.item()
         running_u += kl_divergence_u.item()
-
-        optimizer.step()
-
+    
     train_loss = running_loss / counter
     train_reconst = running_reconst / counter
     train_z = running_z / counter

@@ -352,7 +352,7 @@ class VisiumArguments:
 
 def init_weights(module):
     if type(module) == nn.Linear:
-        torch.nn.init.kaiming_uniform_(module.weight)
+        nn.init.xavier_uniform_(module.weight)
 
     elif type(module) == nn.BatchNorm1d:
         module.bias.data.zero_()
@@ -420,11 +420,10 @@ def run_starfysh(
 
     # Running Starfysh with multiple starts
     LOGGER.info('Running Starfysh with {} restarts, choose the model with best parameters...'.format(n_repeats))
-    for i in range(n_repeats):
-        if verbose:
-            LOGGER.info(" ===  Restart Starfysh {0} === \n".format(i + 1))
+    
+    count = 0
+    while count < n_repeats:
         best_loss_c = np.inf
-
         if poe:
             model = AVAE_PoE(
                 adata=adata,
@@ -462,35 +461,42 @@ def run_starfysh(
         optimizer = optim.Adam(model.parameters(), lr=lr)
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.98)
         
-        for epoch in range(epochs):
-            result = train_func(model, trainloader, device, optimizer)
-            torch.cuda.empty_cache()
+        try:
+            for epoch in range(epochs):
+                result = train_func(model, trainloader, device, optimizer)
+                torch.cuda.empty_cache()
 
-            loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n, corr_list = result
-            if loss_c < best_loss_c:
-                models[i] = model
-                best_loss_c = loss_c
+                loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n, corr_list = result
+                if loss_c < best_loss_c:
+                    models[count] = model
+                    best_loss_c = loss_c
 
-            torch.cuda.empty_cache()
+                torch.cuda.empty_cache()
 
-            loss_dict['tot'].append(loss_tot)
-            loss_dict['reconst'].append(loss_reconst)
-            loss_dict['u'].append(loss_u)
-            loss_dict['z'].append(loss_z)
-            loss_dict['c'].append(loss_c)
-            loss_dict['n'].append(loss_n)
+                loss_dict['tot'].append(loss_tot)
+                loss_dict['reconst'].append(loss_reconst)
+                loss_dict['u'].append(loss_u)
+                loss_dict['z'].append(loss_z)
+                loss_dict['c'].append(loss_c)
+                loss_dict['n'].append(loss_n)
 
-            if (epoch + 1) % 10 == 0 and verbose:
-                LOGGER.info("Epoch[{}/{}], train_loss: {:.4f}, train_reconst: {:.4f}, train_u: {:.4f},train_z: {:.4f},train_c: {:.4f},train_l: {:.4f}".format(
-                    epoch + 1, epochs, loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n)
-                )
-            scheduler.step()
+                if (epoch + 1) % 10 == 0 and verbose:
+                    LOGGER.info("Epoch[{}/{}], train_loss: {:.4f}, train_reconst: {:.4f}, train_u: {:.4f},train_z: {:.4f},train_c: {:.4f},train_l: {:.4f}".format(
+                        epoch + 1, epochs, loss_tot, loss_reconst, loss_u, loss_z, loss_c, loss_n)
+                    )
+                scheduler.step()
 
-        losses.append(loss_dict)
-        loss_c_list[i] = best_loss_c
+            losses.append(loss_dict)
+            loss_c_list[count] = best_loss_c
+            
+            count += 1
+                
+        except ValueError as ve: # Bad model initialization -> numerical instability
+            continue
+        
         if verbose:
-            LOGGER.info('Saving the best-performance model...')
-            LOGGER.info(" === Finished training === \n")
+                LOGGER.info('Saving the best-performance model...')
+                LOGGER.info(" === Finished training === \n")
 
     idx = np.argmin(loss_c_list)
     best_model = models[idx]

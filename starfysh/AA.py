@@ -19,7 +19,7 @@ class ArchetypalAnalysis:
     def __init__(
         self,
         adata_orig,
-        n_neighbors=20,
+        r=100,
         u=None,
         u_3d=None,
         verbose=True,
@@ -27,6 +27,17 @@ class ArchetypalAnalysis:
         filename=None,
         savefig=False,
     ):
+        """
+        Parameters
+        ----------
+        adata_orig : sc.AnnData
+            ST raw count matrix
+        
+        r : int
+            Resolution parameter to control granularity of major archetypes
+            If two archetypes reside within r nearest neighbors, the latter
+            one will be merged.
+        """
 
         # Check adata raw counts
 
@@ -39,9 +50,9 @@ class ArchetypalAnalysis:
         sc.pp.normalize_total(self.adata, target_sum=1e6)
         sc.pp.pca(self.adata, n_comps=30)
         
+        self.r = r  # granularity parameter
         self.count = self.adata.obsm['X_pca']
         self.n_spots = self.count.shape[0]
-        self.n_neighbors=n_neighbors
         
         self.verbose = verbose
         self.outdir = outdir
@@ -63,7 +74,6 @@ class ArchetypalAnalysis:
         cn=30,
         n_iters=20, 
         converge=1e-3,
-        r=20,
         display=False
     ):
         """
@@ -82,11 +92,6 @@ class ArchetypalAnalysis:
 
         converge : int
             Convergence criteria for AA iteration with diff(explained variance)
-
-`       r : int
-            Resolution parameter to control granularity of major archetypes
-            If two archetypes reside within r nearest neighbors, the latter
-            one will be merged.
 
         display : bool
             Whether to display Intrinsic Dimension (ID) estimation plots
@@ -137,10 +142,10 @@ class ArchetypalAnalysis:
 
         # Merge raw archetypes to get major archetypes
         if self.verbose:
-            LOGGER.info('{0} variance explained by raw archetypes.\nMerging raw archetypes within {1} NNs to get major archetypes'.format(np.round(ev, 4), r))
+            LOGGER.info('{0} variance explained by raw archetypes.\n'
+                        'Merging raw archetypes within {1} NNs to get major archetypes'.format(np.round(ev, 4), self.r))
             
-            
-        arche_dict, major_idx = self._merge_archetypes(r)
+        arche_dict, major_idx = self._merge_archetypes(self.r)
         self.major_archetype = self.archetype[major_idx]
         self.major_idx = np.array(major_idx)
         self.arche_dict = arche_dict
@@ -148,7 +153,7 @@ class ArchetypalAnalysis:
         # return all archetypes for Silhouette score calculation
         return archetypes, arche_dict, major_idx, evs
     
-    def _merge_archetypes(self, r):
+    def _merge_archetypes(self):
         """
         Merge raw archetypes into major ones by removing candidate with `r`-step distance
         from its previous identified neighbors
@@ -157,7 +162,7 @@ class ArchetypalAnalysis:
 
         n_archetypes = self.archetype.shape[0]
         X_concat = np.vstack([self.count, self.archetype])
-        nbrs = NearestNeighbors(n_neighbors=r).fit(X_concat)
+        nbrs = NearestNeighbors(n_neighbors=self.r).fit(X_concat)
         nn_graph = nbrs.kneighbors(X_concat)[1][self.n_spots:, 1:]  # retrieve NN-graph of only archetype spots
 
         idxs_to_remove = set()
@@ -192,11 +197,11 @@ class ArchetypalAnalysis:
         """
         assert self.archetype is not None, "Please compute archetypes first!"
         if self.verbose:
-            LOGGER.info('Finding {} nearest neighbors for each archetype...'.format(self.n_neighbors))
+            LOGGER.info('Finding {} nearest neighbors for each archetype...'.format(self.r))
 
         indices = self.major_idx if major else np.arange(self.archetype.shape[0])
         x_concat = np.vstack([self.count, self.archetype])
-        nbrs = self._get_knns(x_concat, n_nbrs=self.n_neighbors, indices=self.n_spots+indices)
+        nbrs = self._get_knns(x_concat, n_nbrs=self.r, indices=self.n_spots+indices)
         self.arche_df = pd.DataFrame({
             'arch_{}'.format(idx): g
             for (idx, g) in zip(indices, nbrs)
@@ -380,7 +385,7 @@ class ArchetypalAnalysis:
     def _get_umap(self, ndim=2, random_state=42):
         assert ndim == 2 or ndim == 3, "Invalid dimension for UMAP: {}".format(ndim)
         LOGGER.info('Calculating UMAPs for counts + Archetypes...')
-        reducer = umap.UMAP(n_neighbors=self.n_neighbors+10, n_components=ndim, random_state=random_state)
+        reducer = umap.UMAP(n_neighbors=self.r+10, n_components=ndim, random_state=random_state)
         U = reducer.fit_transform(np.vstack([self.count, self.archetype]))
         return U
 

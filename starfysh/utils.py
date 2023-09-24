@@ -775,7 +775,7 @@ def preprocess_img(
 
     tissue_position_list = pd.read_csv(os.path.join(data_path, sample_id, 'spatial', 'tissue_positions_list.csv'), header=None, index_col=0)
     tissue_position_list = tissue_position_list.loc[adata_index, :]
-    map_info = tissue_position_list.iloc[:, 1:3]
+    map_info = tissue_position_list.iloc[:, -4:-2]
     map_info.columns = ['array_row', 'array_col']
     map_info.loc[:, 'imagerow'] = tissue_position_list.iloc[:, -2]
     map_info.loc[:, 'imagecol'] = tissue_position_list.iloc[:, -1]

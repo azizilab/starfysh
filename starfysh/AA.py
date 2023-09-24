@@ -145,7 +145,7 @@ class ArchetypalAnalysis:
             LOGGER.info('{0} variance explained by raw archetypes.\n'
                         'Merging raw archetypes within {1} NNs to get major archetypes'.format(np.round(ev, 4), self.r))
             
-        arche_dict, major_idx = self._merge_archetypes(self.r)
+        arche_dict, major_idx = self._merge_archetypes()
         self.major_archetype = self.archetype[major_idx]
         self.major_idx = np.array(major_idx)
         self.arche_dict = arche_dict

@@ -206,7 +206,7 @@ def _dist2gt(A, A_gt):
 def _calc_rmse(y_true, y_pred):
     """Calculate per-spot RMSE between ground-truth & predicted proportions"""
     assert y_true.shape == y_pred.shape, "proportion matrices need to be the same shape to calculate RMSE"   
-    n_cts = y_ture.shape[1]
+    n_cts = y_true.shape[1]
     rmse = np.sqrt(((y_true.values-y_pred.values)**2).sum(1) / n_cts)
     return rmse
 

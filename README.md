@@ -12,15 +12,17 @@ Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Tr
 
 <img src=figure/github_figure_2.png width="1000" />
 
-## Quickstart tutorials on Google Colab
-  - [1. Basic deconvolution on an example breast cancer data (dataset & signature files included).](https://colab.research.google.com/drive/152y-RpmRTEUJ16c_kF3KRwSRjm_THupv?authuser=1) 
-  - [2. Deconvolution and integration of multiple datasets.]
-  - [3. Histology integration & multi-sample integration]
+## Quickstart tutorials
+  - [1. Basic deconvolution on an example breast cancer data (dataset & signature files included).](notebooks/Starfysh_tutorial_real.ipynb)
+  - [2. Histology integration & deconvolution w/ archetypal analysis priorswithout pre-defined signatures.](notebooks/Starfysh_tutorial_real_wo_signatures.ipynb) 
+  - [3. Multi-sample integration](notebooks/Starfysh_tutorial_integration.ipynb)
 
 Please refer to [Starfysh Documentation](http://starfysh.readthedocs.io) for additional tutorials & APIs
 
 ## Update
 
+- V 1.1.1
+  - Histology integration & Sample integration 
 - V 1.1.0
   - Simplified visualizations of deconvolution & gene expression predictions
 - V 1.0.0
@@ -53,9 +55,7 @@ pip install Starfysh
 
 ## Features:
 
-- Deconvolving cell types / cell states
-
-- Discovering and learning novel cell states
+- Deconvolving cell types & discovering novel, unannotated cell states
 
 - Integrating with histology images and multi-sample integration
 
@@ -66,7 +66,7 @@ pip install Starfysh
 ```
 .
 ├── data:           Spatial Transcritomics & synthetic simulation datasets
-├── notebooks:      Sample notebook & tutorial
+├── notebooks:      Sample tutorial notebooks
 ├── simulation:     Synthetic simulation from scRNA-seq for benchmark
 ├── starfysh:       Starfysh core model
 ```

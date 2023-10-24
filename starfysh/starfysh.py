@@ -317,6 +317,7 @@ class AVAE_PoE(nn.Module):
         self.win_loglib = torch.Tensor(win_loglib)
         self.patch_r = patch_r
         self.c_in = adata.shape[1]  # c_in : Num. input features (# input genes)
+        self.nimg_chan = n_img_chan
         self.c_in_img = self.patch_r**2 * 4 * n_img_chan  # c_in_img : (# pixels for the spot's img patch)
         self.c_bn = 10  # c_bn : latent number, numbers of bottleneck
         self.c_hidden = 256
@@ -985,6 +986,125 @@ def model_eval(
     return inference_outputs, generative_outputs
 
 
+def model_eval_integrate(
+    model,
+    adata,
+    visium_args,
+    poe=False,
+    device=torch.device('cpu')
+):
+    """
+    Model evaluation for sample integration
+    TODO: code refactor
+    """
+    model.eval()
+    model = model.to(device)
+
+    x_in = torch.Tensor(adata.to_df().values).to(device)
+    sig_means = torch.Tensor(visium_args.sig_mean_norm.values).to(device)
+    anchor_idx = torch.Tensor(visium_args.pure_idx).to(device)
+
+    with torch.no_grad():
+        inference_outputs = model.inference(x_in)
+        generative_outputs = model.generative(inference_outputs, sig_means)
+        if poe:           
+            img_in = torch.Tensor(visium_args.get_img_patches()).float().to(device)
+            img_outputs = model.predictor_img(img_in) if img_in.max() <= 1 else model.predictor_img(img_in/255)
+            poe_outputs = model.predictor_poe(inference_outputs, img_outputs)
+
+            # Parse image view / PoE inference & generative outputs
+            # Save to `inference_outputs` & `generative_outputs`
+            for k, v in img_outputs.items():
+                if 'q' in k:
+                    inference_outputs[k] = v
+                else:
+                    generative_outputs[k] = v
+
+            for k, v in poe_outputs.items():
+                if 'q' in k:
+                    inference_outputs[k+'_poe'] = v
+                else:
+                    generative_outputs[k+'_poe'] = v
+
+            # TODO: move histology reconstruction to a separate func 
+            
+            # # Reconst histology prediction 
+            # # reconst_img_patches = img_outputs['py_m']            
+            # reconst_poe_img_patches = poe_outputs['py_m']
+            # # reconst_img_all = {}
+            # reconst_poe_img_all = {}
+            
+            # batch_idx = 0   # img metadata counter for each counter
+
+            # for sample_id in visium_args.adata.obs['sample'].unique():
+
+            #     img_dim = visium_args.img[sample_id].shape
+            #     # reconst_img = np.ones((img_dim + (model.nimg_chan,))) * (-1/255)
+            #     reconst_poe_img = np.ones((img_dim + (model.nimg_chan,))) * (-1/255)
+            
+            #     # image_col = img_metadata[i]['map_info']['imagecol']*img_metadata[i]['scalefactor']['tissue_hires_scalef']
+            #     # image_row = img_metadata[i]['map_info']['imagerow']*img_metadata[i]['scalefactor']['tissue_hires_scalef']
+            #     map_info = visium_args.map_info[adata.obs['sample'] == sample_id]
+            #     scalefactor = visium_args.scalefactor[sample_id]
+            #     image_col = map_info['imagecol'] * scalefactor['tissue_hires_scalef']
+            #     image_row = map_info['imagerow'] * scalefactor['tissue_hires_scalef']
+
+            #     for idx in range(image_col.shape[0]):
+                    
+            #         patch_y = slice(int(image_row[idx])-model.patch_r, int(image_row[idx])+model.patch_r)
+            #         patch_x = slice(int(image_col[idx])-model.patch_r, int(image_col[idx])+model.patch_r)
+
+            #         """
+            #         reconst_img[patch_y, patch_x, :] = reconst_img_patches[idx+batch_idx].reshape([
+            #             model.patch_r*2,
+            #             model.patch_r*2,
+            #             model.nimg_chan
+            #         ]).cpu().detach().numpy()
+            #         """
+            #         reconst_poe_img[patch_y, patch_x, :] = reconst_poe_img_patches[idx+batch_idx].reshape([
+            #             model.patch_r*2,
+            #             model.patch_r*2,
+            #             model.nimg_chan
+            #         ]).cpu().detatch().numpy()
+
+            #     # reconst_img_all[sample_id] = reconst_img
+            #     reconst_poe_img_all[sample_id] = reconst_poe_img
+            #     batch_idx += image_col.shape[0]
+
+            # Update reconstructed image
+            # adata.uns['reconst_img'] = reconst_poe_img_all
+                 
+    try:
+        px = NegBinom(
+            mu=generative_outputs["px_rate"],
+            theta=torch.exp(generative_outputs["px_r"])
+        ).sample().detach().cpu().numpy()
+        adata.obsm['px'] = px
+    except ValueError as ve:
+        LOGGER.warning('Invalid Gamma distribution parameters `px_rate` or `px_r`, unable to sample inferred p(x | z)')
+
+    # Save inference & generative outputs in adata
+    for rv in inference_outputs.keys():
+        val = inference_outputs[rv].detach().cpu().numpy().squeeze()
+        if "qu" not in rv and "qs" not in rv:
+            adata.obsm[rv] = val
+        else:
+            adata.uns[rv] = val
+
+    for rv in generative_outputs.keys():
+        try:
+            if rv == 'px_r' or rv == 'reconstruction':  # Posterior avg. znorm signature means
+                val = generative_outputs[rv].data.detach().cpu().numpy().squeeze()
+                adata.varm[rv] = val
+            else:
+                val = generative_outputs[rv].data.detach().cpu().numpy().squeeze()
+                adata.obsm[rv] = val
+        except:
+            print("rv: {} can't be stored".format(rv))
+
+    return inference_outputs, generative_outputs
+
+
 def model_ct_exp(
     model,
     adata,
@@ -1061,3 +1181,4 @@ def model_ct_img(
         ct_imgs_poe[cell_type] = poe_outputs['py_m'].detach().cpu().numpy()
 
     return ct_imgs, ct_imgs_poe
+

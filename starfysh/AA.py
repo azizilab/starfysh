@@ -201,7 +201,7 @@ class ArchetypalAnalysis:
 
         indices = self.major_idx if major else np.arange(self.archetype.shape[0])
         x_concat = np.vstack([self.count, self.archetype])
-        nbrs = self._get_knns(x_concat, n_nbrs=self.r, indices=self.n_spots+indices)
+        nbrs = self._get_knns(x_concat, n_nbrs=self.r, indices=indices+self.n_spots)
         self.arche_df = pd.DataFrame({
             'arch_{}'.format(idx): g
             for (idx, g) in zip(indices, nbrs)
@@ -344,17 +344,16 @@ class ArchetypalAnalysis:
         return distant_arches
 
     def _get_knns(self, x, n_nbrs, indices):
+        """Compute kNNs (actual spots) to each archetype"""
         assert 0 <= indices.min() < indices.max() < x.shape[0], \
             "Invalid indices of interest to compute k-NNs"
         nbrs = np.zeros((len(indices), n_nbrs), dtype=np.int32)
         for i, index in enumerate(indices):
             u = x[index]
             dist = np.ones(x.shape[0])*np.inf
-            for j, v in enumerate(x):
-                if i != j and j < self.n_spots:
-                    dist[j] = np.linalg.norm(u-v)
+            for j, v in enumerate(x[:self.n_spots]):
+                dist[j] = np.linalg.norm(u-v)
             nbrs[i] = np.argsort(dist)[:n_nbrs]
-
         return nbrs
 
     def _stable_matching(self, A):

@@ -67,7 +67,7 @@ class VisiumArguments:
             'patch_r': 16,
             'sig_version': 'gene_score',
             'signif_level': 3,
-            'window_size': 3,
+            'window_size': 1,
             'n_img_chan': 1
         }
 
@@ -509,24 +509,15 @@ def run_starfysh(
 # Preprocessing & IO
 # -------------------
 
-def get_alpha_min(sig_mean, pure_dict):
-    """Calculate alpha_min for Dirichlet dist. for each factor"""
-    alpha_min = 0
-    for col_idx in sig_mean.columns:
-        if (1 / (sig_mean.loc[pure_dict[col_idx], :] / sig_mean.loc[pure_dict[col_idx], :].sum())[col_idx]).max() > alpha_min:
-            alpha_min = (1 / (sig_mean.loc[pure_dict[col_idx], :] / sig_mean.loc[pure_dict[col_idx], :].sum())[col_idx]).max()
-    return alpha_min
-
-
-def preprocess(adata_raw,
-               lognorm=True,
-               min_perc=None,
-               max_perc=None,
-               n_top_genes=6000,
-               mt_thld=100,
-               verbose=True,
-               multiple_data=False
-               ):
+def preprocess(
+    adata_raw,
+    min_perc=None,
+    max_perc=None,
+    n_top_genes=2000,
+    mt_thld=100,
+    verbose=True,
+    multiple_data=False
+):
     """
     Preprocessing ST gexp matrix, remove Ribosomal & Mitochondrial genes
 
@@ -561,7 +552,6 @@ def preprocess(adata_raw,
 
     # Remove cells with excessive MT expressions
     # Remove MT & RB genes
-
     if verbose:
         LOGGER.info('Preprocessing1: delete the mt and rp')
         
@@ -582,28 +572,30 @@ def preprocess(adata_raw,
     adata = adata[mask_cell, mask_gene]
     sc.pp.filter_genes(adata, min_cells=1)
 
-    if lognorm:
-        if verbose:
-            LOGGER.info('Preprocessing2: Normalize')
-        if multiple_data:
-            sc.pp.normalize_total(adata, target_sum=1e6, inplace=True)
-        else:
-            sc.pp.normalize_total(adata, inplace=True)
-
-        # Preprocessing3: Logarithm
-        if verbose:
-            LOGGER.info('Preprocessing3: Logarithm')
-        sc.pp.log1p(adata)
+    # Normalize & take log-transform
+    if verbose:
+        LOGGER.info('Preprocessing2: Normalize')
+    if multiple_data:
+        sc.pp.normalize_total(adata, target_sum=1e6, inplace=True)
     else:
-        if verbose:
-            LOGGER.info('Skip Normalize and Logarithm')
+        sc.pp.normalize_total(adata, inplace=True)
+
+    # Preprocessing3: Logarithm
+    if verbose:
+        LOGGER.info('Preprocessing3: Logarithm')
+    sc.pp.log1p(adata)
 
     # Preprocessing4: Find the variable genes
     if verbose:
         LOGGER.info('Preprocessing4: Find the variable genes')
     sc.pp.highly_variable_genes(adata, flavor='seurat', n_top_genes=n_top_genes, inplace=True)
 
-    return adata
+    # Filter corresponding `obs` & `var` in raw-count matrix
+    adata_raw = adata_raw[adata.obs_names, adata.var_names]
+    adata_raw.var['highly_variable'] = adata.var['highly_variable']
+    adata_raw.obs = adata_norm.obs
+
+    return adata_raw, adata
 
 
 def load_adata(data_folder, sample_id, n_genes, multiple_data=False):
@@ -659,11 +651,7 @@ def load_adata(data_folder, sample_id, n_genes, multiple_data=False):
         adata.var_names.name = 'Genes'
         adata.var.drop('_index', axis=1, inplace=True)
 
-    adata_norm = preprocess(adata, n_top_genes=n_genes, multiple_data=multiple_data)
-    adata = adata[:, list(adata_norm.var_names)]
-    adata.var['highly_variable'] = adata_norm.var['highly_variable']
-    adata.obs = adata_norm.obs
-
+    adata, adata_norm = preprocess(adata, n_top_genes=n_genes, multiple_data=multiple_data)
     return adata, adata_norm
 
 

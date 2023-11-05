@@ -593,7 +593,7 @@ def preprocess(
     # Filter corresponding `obs` & `var` in raw-count matrix
     adata_raw = adata_raw[adata.obs_names, adata.var_names]
     adata_raw.var['highly_variable'] = adata.var['highly_variable']
-    adata_raw.obs = adata_norm.obs
+    adata_raw.obs = adata.obs
 
     return adata_raw, adata
 

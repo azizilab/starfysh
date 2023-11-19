@@ -362,7 +362,7 @@ def init_weights(module):
 def run_starfysh(
     visium_args,
     n_repeats=3,
-    lr=1e-3,
+    lr=1e-4,
     epochs=100,
     batch_size=32,
     alpha_mul=50,
@@ -416,7 +416,7 @@ def run_starfysh(
         train_func = train
 
     trainset = dl_func(adata=adata, args=visium_args)
-    trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
+    trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, drop_last=True)
 
     # Running Starfysh with multiple starts
     LOGGER.info('Running Starfysh with {} restarts, choose the model with best parameters...'.format(n_repeats))
@@ -440,7 +440,7 @@ def run_starfysh(
                 adata=adata,
                 gene_sig=sig_mean_norm,
                 win_loglib=win_loglib,
-                alpha_mul=alpha_mul,
+                alpha_mul=alpha_mul
             )
 
         model = model.to(device)

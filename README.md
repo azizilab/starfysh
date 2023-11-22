@@ -67,7 +67,6 @@ pip install Starfysh
 .
 ├── data:           Spatial Transcritomics & synthetic simulation datasets
 ├── notebooks:      Sample tutorial notebooks
-├── simulation:     Synthetic simulation from scRNA-seq for benchmark
 ├── starfysh:       Starfysh core model
 ```
 

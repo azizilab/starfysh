@@ -4,7 +4,7 @@
 [![Licence: GPL v3](https://img.shields.io/github/license/azizilab/starfysh)](https://github.com/azizilab/starfysh/blob/master/LICENSE)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/152y-RpmRTEUJ16c_kF3KRwSRjm_THupv?authuser=1)
 
-## Starfysh: Spatial Transcriptomic Analysis using Reference-Free auxiliarY deep generative modeling and Shared Histology
+## Starfysh: Spatial Transcriptomic Analysis using Reference-Free deep generative modeling with archetYpes and Shared Histology 
 
 Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Transcriptomic (ST) datasets. In summary, the Starfysh framework enables reference-free deconvolution of cell types and cell states and can be improved with the integration of paired histology images of tissues, if available. Starfysh is capable of integrating data from multiple tissues. In particular, Starfysh identifies common or sample-specific spatial “hubs” with unique composition of cell types. To uncover mechanisms underlying local and long-range communication, Starfysh can be used to perform downstream analysis on the spatial organization of hubs.
 

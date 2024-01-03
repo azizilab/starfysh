@@ -211,38 +211,9 @@ class VisiumArguments:
         Calculate top `anchor_spots` significantly enriched for given cell type(s)
         determined by gene set scores from signatures
         """
-        score_type = self.params['sig_version']
         score_df = self.sig_mean_norm
-        signif_level = self.params['signif_level']
         n_anchor = self.params['n_anchors']
-        n_cell_types = self.sig_mean_norm.shape[1]
 
-        # DEBUG: retry only subset by # anchors
-        # if score_type == 'gene_score':
-        #     pure_spots = []
-        #     for i, cell_type in enumerate(score_df.columns):
-        #         # find anchors by outlier detection
-        #         score = score_df.values[:, i]
-        #
-        #         # modified z-score
-        #         med = np.median(score)
-        #         mad = median_abs_deviation(score)
-        #         modified_zscore = 0.6745 * (score-med)/mad
-        #         top_score = score_df.iloc[:, i][modified_zscore > signif_level]
-        #
-        #         # z-score
-        #         sd = score.std()
-        #         top_score = score_df.iloc[:, i][score > signif_level*sd]
-        #         top_score = top_score[top_score.index]
-        #
-        #         if len(top_score) <= n_anchor:
-        #             pure_spots.append(top_score.index)
-        #         else:
-        #             pure_spots.append(top_score.index[(-top_score.values).argsort()[:n_anchor]])
-        #
-        # else:
-        #     top_expr_spots = (-score_df.values).argsort(axis=0)[:n_anchor, :]
-        #     pure_spots = np.transpose(score_df.index[top_expr_spots])
         top_expr_spots = (-score_df.values).argsort(axis=0)[:n_anchor, :]
         pure_spots = np.transpose(score_df.index[top_expr_spots])
 
@@ -560,8 +531,7 @@ def preprocess(
         adata.var_names.str.startswith('mt-')
     )
     adata.var['rb'] = (
-        adata.var_names.str.startswith('RPS') |
-        adata.var_names.str.startswith('RPL') |
+        adata.var_names.str.startswith('RP-') |
         adata.var_names.str.startswith('rp-')
     )
 

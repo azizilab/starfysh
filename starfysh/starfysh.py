@@ -57,7 +57,7 @@ class AVAE(nn.Module):
         win_loglib : float
             Log-library size smoothed with neighboring spots
 
-        alpha_mul : float (default=1e3)
+        alpha_mul : float (default=50)
             Multiplier of Dirichlet concentration parameter to control
             signature prior's confidence
         """
@@ -283,7 +283,7 @@ class AVAE_PoE(nn.Module):
         gene_sig,
         patch_r,
         win_loglib,
-        alpha_mul=20,
+        alpha_mul=50,
         n_img_chan=1,
         seed=0,
         device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -306,7 +306,7 @@ class AVAE_PoE(nn.Module):
         win_loglib : float
             Log-library size smoothed with neighboring spots
 
-        alpha_mul : float (default=1e3)
+        alpha_mul : float (default=50)
             Multiplier of Dirichlet concentration parameter to control
             signature prior's confidence
 

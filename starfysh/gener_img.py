@@ -30,14 +30,15 @@ from henet import model
  
 class dataset(torch.utils.data.Dataset):
 
-    def __init__(self, 
-                 spot, 
-                 exp_spot, 
-                 barcode_spot, 
-                 #img_size,
-                 #histo_img,
-                 transform=None
-                ):
+    def __init__(
+        self, 
+        spot, 
+        exp_spot, 
+        barcode_spot, 
+        #img_size,
+        #histo_img,
+        transform=None
+    ):
 
         super(dataset, self).__init__()
         self.spot = spot
@@ -115,9 +116,7 @@ def prep_dataset(adata):
     return train_set,test_set,all_set
 
 
-def generate_img(dat_path,
-                 train_flag=True
-                ):
+def generate_img(dat_path, train_flag=True):
     """
     input:
     dat_path: the path for csv file
@@ -331,8 +330,4 @@ def generate_img(dat_path,
 
     
     return recon
-    
-    
 
-    
-    

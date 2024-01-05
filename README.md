@@ -26,7 +26,7 @@ Please refer to [Starfysh Documentation](http://starfysh.readthedocs.io) for add
 - V 1.1.0
   - Simplified visualizations of deconvolution & gene expression predictions
 - V 1.0.0
-  - [Example dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link) & [Zenodo V 1.0.0](https://doi.org/10.5281/zenodo.7342798)
+  - [Example dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link)
 
 
 ## Installation

@@ -71,7 +71,13 @@ pip install Starfysh
 ```
 
 ## How to cite Starfysh
-Please cite our preprint https://www.biorxiv.org/content/10.1101/2022.11.21.517420v1
+Please cite [Starfysh paper published in Nature Biotechnology](https://www.nature.com/articles/s41587-024-02173-8#citeas): 
+```
+He, S., Jin, Y., Nazaret, A. et al.
+Starfysh integrates spatial transcriptomic and histologic data to reveal heterogeneous tumor–immune hubs.
+Nat Biotechnol (2024).
+https://doi.org/10.1038/s41587-024-02173-8
+```
 
 ### BibTex
 ```
@@ -82,10 +88,6 @@ Please cite our preprint https://www.biorxiv.org/content/10.1101/2022.11.21.5174
   year={2022},
   publisher={Cold Spring Harbor Laboratory}
 }
-```
-### Chicago
-```
-He, Siyu, Yinuo Jin, Achille Nazaret, Lingting Shi, Xueer Chen, Sham Rampersaud, Bahawar S. Dhillon et al. "Starfysh reveals heterogeneous spatial dynamics in the breast tumor microenvironment." bioRxiv (2022).
 ```
 
 If you have questions, please contact the authors:

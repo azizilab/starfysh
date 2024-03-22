@@ -71,7 +71,13 @@ pip install Starfysh
 ```
 
 ## How to cite Starfysh
-Please cite our paper https://www.nature.com/articles/s41587-024-02173-8
+Please cite [Starfysh paper published in Nature Biotechnology](https://www.nature.com/articles/s41587-024-02173-8#citeas): 
+```
+He, S., Jin, Y., Nazaret, A. et al.
+Starfysh integrates spatial transcriptomic and histologic data to reveal heterogeneous tumor–immune hubs.
+Nat Biotechnol (2024).
+https://doi.org/10.1038/s41587-024-02173-8
+```
 
 ### BibTex
 ```
@@ -86,10 +92,6 @@ Please cite our paper https://www.nature.com/articles/s41587-024-02173-8
   year = {2024},
   month = mar 
 }
-```
-### Chicago
-```
-He, S., Jin, Y., Nazaret, A. et al. Starfysh integrates spatial transcriptomic and histologic data to reveal heterogeneous tumor–immune hubs. Nat Biotechnol (2024). https://doi.org/10.1038/s41587-024-02173-8
 ```
 
 If you have questions, please contact the authors:

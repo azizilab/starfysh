@@ -71,21 +71,25 @@ pip install Starfysh
 ```
 
 ## How to cite Starfysh
-Please cite our preprint https://www.biorxiv.org/content/10.1101/2022.11.21.517420v1
+Please cite our paper https://www.nature.com/articles/s41587-024-02173-8
 
 ### BibTex
 ```
-@article{he2022starfysh,
-  title={Starfysh reveals heterogeneous spatial dynamics in the breast tumor microenvironment},
-  author={He, Siyu and Jin, Yinuo and Nazaret, Achille and Shi, Lingting and Chen, Xueer and Rampersaud, Sham and Dhillon, Bahawar S and Valdez, Izabella and Friend, Lauren E and Fan, Joy Linyue and others},
-  journal={bioRxiv},
-  year={2022},
-  publisher={Cold Spring Harbor Laboratory}
+@article{He2024,
+  title = {Starfysh integrates spatial transcriptomic and histologic data to reveal heterogeneous tumor–immune hubs},
+  ISSN = {1546-1696},
+  url = {http://dx.doi.org/10.1038/s41587-024-02173-8},
+  DOI = {10.1038/s41587-024-02173-8},
+  journal = {Nature Biotechnology},
+  publisher = {Springer Science and Business Media LLC},
+  author = {He,  Siyu and Jin,  Yinuo and Nazaret,  Achille and Shi,  Lingting and Chen,  Xueer and Rampersaud,  Sham and Dhillon,  Bahawar S. and Valdez,  Izabella and Friend,  Lauren E. and Fan,  Joy Linyue and Park,  Cameron Y. and Mintz,  Rachel L. and Lao,  Yeh-Hsing and Carrera,  David and Fang,  Kaylee W. and Mehdi,  Kaleem and Rohde,  Madeline and McFaline-Figueroa,  José L. and Blei,  David and Leong,  Kam W. and Rudensky,  Alexander Y. and Plitas,  George and Azizi,  Elham},
+  year = {2024},
+  month = mar 
 }
 ```
 ### Chicago
 ```
-He, Siyu, Yinuo Jin, Achille Nazaret, Lingting Shi, Xueer Chen, Sham Rampersaud, Bahawar S. Dhillon et al. "Starfysh reveals heterogeneous spatial dynamics in the breast tumor microenvironment." bioRxiv (2022).
+He, S., Jin, Y., Nazaret, A. et al. Starfysh integrates spatial transcriptomic and histologic data to reveal heterogeneous tumor–immune hubs. Nat Biotechnol (2024). https://doi.org/10.1038/s41587-024-02173-8
 ```
 
 If you have questions, please contact the authors:

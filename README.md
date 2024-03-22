@@ -81,12 +81,16 @@ https://doi.org/10.1038/s41587-024-02173-8
 
 ### BibTex
 ```
-@article{he2022starfysh,
-  title={Starfysh reveals heterogeneous spatial dynamics in the breast tumor microenvironment},
-  author={He, Siyu and Jin, Yinuo and Nazaret, Achille and Shi, Lingting and Chen, Xueer and Rampersaud, Sham and Dhillon, Bahawar S and Valdez, Izabella and Friend, Lauren E and Fan, Joy Linyue and others},
-  journal={bioRxiv},
-  year={2022},
-  publisher={Cold Spring Harbor Laboratory}
+@article{He2024,
+  title = {Starfysh integrates spatial transcriptomic and histologic data to reveal heterogeneous tumor–immune hubs},
+  ISSN = {1546-1696},
+  url = {http://dx.doi.org/10.1038/s41587-024-02173-8},
+  DOI = {10.1038/s41587-024-02173-8},
+  journal = {Nature Biotechnology},
+  publisher = {Springer Science and Business Media LLC},
+  author = {He,  Siyu and Jin,  Yinuo and Nazaret,  Achille and Shi,  Lingting and Chen,  Xueer and Rampersaud,  Sham and Dhillon,  Bahawar S. and Valdez,  Izabella and Friend,  Lauren E. and Fan,  Joy Linyue and Park,  Cameron Y. and Mintz,  Rachel L. and Lao,  Yeh-Hsing and Carrera,  David and Fang,  Kaylee W. and Mehdi,  Kaleem and Rohde,  Madeline and McFaline-Figueroa,  José L. and Blei,  David and Leong,  Kam W. and Rudensky,  Alexander Y. and Plitas,  George and Azizi,  Elham},
+  year = {2024},
+  month = mar 
 }
 ```
 

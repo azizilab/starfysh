@@ -215,7 +215,7 @@ class VisiumArguments:
         n_anchor = self.params['n_anchors']
 
         top_expr_spots = (-score_df.values).argsort(axis=0)[:n_anchor, :]
-        pure_spots = np.transpose(score_df.index[top_expr_spots])
+        pure_spots = np.transpose(np.array(score_df.index)[top_expr_spots])
 
         pure_dict = {
             ct: spot

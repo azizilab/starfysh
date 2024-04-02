@@ -30,11 +30,17 @@ Please refer to [Starfysh Documentation](http://starfysh.readthedocs.io) for add
 
 
 ## Installation
-
 ```bash
-# install
-pip install Starfysh
+# Step 1: Clone the Repository
+git clone https://github.com/azizilab/starfysh.git
+
+# Step 2: Navigate to the Repository
+cd starfysh
+
+# Step 3: Install the Package
+pip install .
 ```
+
 
 ## Models & I/O:
 

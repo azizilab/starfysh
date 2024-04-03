@@ -15,21 +15,24 @@ from .post_analysis import get_z_umap
 from .utils import extract_feature
 
 
-def plot_spatial_feature(adata_sample,
-                         map_info,
-                         variable,
-                         label
-                     ):
+def plot_spatial_feature(
+    map_info,
+    variable,
+    label,
+    vmin=None, vmax=None,
+    figsize=(2.5, 2)
+):
     all_loc = np.array(map_info.loc[:,['array_col','array_row']])
-    fig,axs= plt.subplots(1,1,figsize=(2.5,2),dpi=300)
-    g=axs.scatter(all_loc[:,0],
-                  -all_loc[:,1],
-                  c=variable,
-                  cmap='magma',
-                  s=1
-                 )
-    fig.colorbar(g,label=label)
-    plt.axis('off')
+    fig, axes = plt.subplots(1, 1, figsize=figsize, dpi=300)
+    g = axes.scatter(all_loc[:,0],
+                     -all_loc[:,1],
+                     c=variable,
+                     vmin=vmin, vmax=vmax,
+                     cmap='magma',
+                     s=1
+                    )
+    fig.colorbar(g, label=label)
+    axes.axis('off')
 
 
 def plot_spatial_gene(adata_sample,
@@ -132,8 +135,9 @@ def pl_spatial_inf_feature(
                                 vmin=vmin, vmax=vmax)
         else:
             title = factor + ' (Inferred proportion - UMAP of Z)'
-            pl_umap_feature(qz_u, qc_df[factor].values, cmap, title,
+            fig, ax = pl_umap_feature(qz_u, qc_df[factor].values, cmap, title,
                             vmin=vmin, vmax=vmax)
+            return fig, ax
     else:
         raise ValueError('Invalid Starfysh inference results `{}`, please choose from `qc_m`, `qz_m` & `ql_m`'.format(feature))
 
@@ -142,19 +146,18 @@ def pl_spatial_inf_feature(
 
 def pl_umap_feature(qz_u, qc, cmap, title, spot_size=3, vmin=0, vmax=None):
     """Single Z-UMAP visualization of Starfysh deconvolutions"""
-    fig, axes = plt.subplots(1, 1, figsize=(4, 3), dpi=200)
-    g = axes.scatter(
+    fig, ax = plt.subplots(1, 1, figsize=(4, 3), dpi=200)
+    g = ax.scatter(
         qz_u[:, 0], qz_u[:, 1],
         cmap=cmap, c=qc, s=spot_size, vmin=vmin, vmax=vmax,
     )
-    axes.set_xticks([])
-    axes.set_yticks([])
-    axes.set_title(title)
-    axes.axis('off')
-
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title(title)
+    ax.axis('off')
     fig.colorbar(g, label='Inferred proportions')
 
-    pass
+    return fig, ax
 
 
 def pl_spatial_inf_gene(
@@ -284,7 +287,7 @@ def disp_corr(
     for i in range(n_factor1):
         for j in range(n_factor2):
             corr[i, j], _ = np.round(pearsonr(v1[:, i], v2[:, j]), 3)
-
+ 
     fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=300)
     ax = sns.heatmap(
         corr, annot=True,
@@ -292,7 +295,7 @@ def disp_corr(
         annot_kws={"fontsize": fontsize},
         cbar_kws={'label': 'Cell type proportion corr.'},
         ax=ax
-        )
+    )
 
     ax.set_xticks(np.arange(n_factor2) + 0.5)
     ax.set_yticks(np.arange(n_factor1) + 0.5)

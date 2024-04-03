@@ -21,7 +21,6 @@ setup(
     packages=find_packages(),
     python_requires='>=3.7',
     install_requires=requirements,
-    # package_data = ""; include_package_data=True
     zip_safe=False,
     classifiers=[
         "Programming Language :: Python :: 3",

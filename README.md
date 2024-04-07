@@ -17,7 +17,12 @@ Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Tr
   - [2. Histology integration & deconvolution w/ archetypal analysis priorswithout pre-defined signatures.](notebooks/Starfysh_tutorial_real_wo_signatures.ipynb) 
   - [3. Multi-sample integration](notebooks/Starfysh_tutorial_integration.ipynb)
 
+### Quickstart on colab (recommend)：
+  - [1.Basic deconvolution](https://colab.research.google.com/drive/1a_mxF6Ot5vA_xzr5EaNz-GllYY-pXhwA#scrollTo=QKl0NB0FVUFZ)
+   
+       
 Please refer to [Starfysh Documentation](http://starfysh.readthedocs.io) for additional tutorials & APIs
+
 
 ## Update
 

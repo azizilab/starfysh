@@ -14,7 +14,7 @@ nb_requirements = [
 
 setup(
     name="Starfysh",
-    version="1.1.1",
+    version="1.2.1",
     description="Spatial Transcriptomic Analysis using Reference-Free auxiliarY deep generative modeling and Shared Histology",
     authors=["Siyu He", "Yinuo Jin", "Achille Nazaret"],
     url="https://starfysh.readthedocs.io",
@@ -27,9 +27,14 @@ setup(
         "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
     ],
-    #extras_require={
-    ###    'notebooks': nb_requirements,
-        #'dev': open('dev-requirements.txt').read().splitlines(),
-    #}
+
+    dependency_links=[
+        'https://girder.github.io/large_image_wheels'
+    ]
+
+    # extras_require={
+    #    'notebooks': nb_requirements,
+    #    'dev': open('dev-requirements.txt').read().splitlines(),
+    # }
 )
 

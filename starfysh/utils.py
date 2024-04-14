@@ -87,13 +87,13 @@ class VisiumArguments:
         LOGGER.info('Subsetting highly variable & signature genes ...')
         self.adata, self.adata_norm = get_adata_wsig(adata, adata_norm, gene_sig)
         self.adata_scale = adata_scale[:, adata.var_names]
-       
-
-        sc.pp.pca(self.adata)
-        sc.pp.pca(self.adata_norm)
+        
         # Calculate UMAPs after selecting HVGs || markers
-        sc.pp.neighbors(self.adata, n_neighbors=15, n_pcs=40, use_rep='X')
-        sc.pp.neighbors(self.adata_norm, n_neighbors=15, n_pcs=40, use_rep='X')
+         sc.pp.pca(self.adata)
+        sc.pp.pca(self.adata_norm)
+        
+        sc.pp.neighbors(self.adata, n_neighbors=30, n_pcs=50)
+        sc.pp.neighbors(self.adata_norm, n_neighbors=30, n_pcs=50)
         sc.tl.umap(self.adata, min_dist=0.2)
         sc.tl.umap(self.adata_norm, min_dist=0.2)
         

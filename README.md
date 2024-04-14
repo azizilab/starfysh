@@ -17,6 +17,10 @@ Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Tr
   - [2. Histology integration & deconvolution w/ archetypal analysis priorswithout pre-defined signatures.](notebooks/Starfysh_tutorial_real_wo_signatures.ipynb) 
   - [3. Multi-sample integration](notebooks/Starfysh_tutorial_integration.ipynb)
 
+### Tutorials on Colab (recommend)
+  - [1. Basic deconvolution](https://colab.research.google.com/drive/1a_mxF6Ot5vA_xzr5EaNz-GllYY-pXhwA)
+  - [2. Multi-sample integration](https://colab.research.google.com/drive/1STHh5Eoe0ayUkFck7NlNfMlNmqrQT-mZ)
+
 Please refer to [Starfysh Documentation](http://starfysh.readthedocs.io) for additional tutorials & APIs
 
 ## Update
@@ -26,15 +30,21 @@ Please refer to [Starfysh Documentation](http://starfysh.readthedocs.io) for add
 - V 1.1.0
   - Simplified visualizations of deconvolution & gene expression predictions
 - V 1.0.0
-  - [Example dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link) & [Zenodo V 1.0.0](https://doi.org/10.5281/zenodo.7342798)
+  - [Example dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link)
 
 
 ## Installation
-
 ```bash
-# install
-pip install Starfysh
+# Step 1: Clone the Repository
+git clone https://github.com/azizilab/starfysh.git
+
+# Step 2: Navigate to the Repository
+cd starfysh
+
+# Step 3: Install the Package
+pip install .
 ```
+
 
 ## Models & I/O:
 
@@ -71,21 +81,27 @@ pip install Starfysh
 ```
 
 ## How to cite Starfysh
-Please cite our preprint https://www.biorxiv.org/content/10.1101/2022.11.21.517420v1
+Please cite [Starfysh paper published in Nature Biotechnology](https://www.nature.com/articles/s41587-024-02173-8#citeas): 
+```
+He, S., Jin, Y., Nazaret, A. et al.
+Starfysh integrates spatial transcriptomic and histologic data to reveal heterogeneous tumor–immune hubs.
+Nat Biotechnol (2024).
+https://doi.org/10.1038/s41587-024-02173-8
+```
 
 ### BibTex
 ```
-@article{he2022starfysh,
-  title={Starfysh reveals heterogeneous spatial dynamics in the breast tumor microenvironment},
-  author={He, Siyu and Jin, Yinuo and Nazaret, Achille and Shi, Lingting and Chen, Xueer and Rampersaud, Sham and Dhillon, Bahawar S and Valdez, Izabella and Friend, Lauren E and Fan, Joy Linyue and others},
-  journal={bioRxiv},
-  year={2022},
-  publisher={Cold Spring Harbor Laboratory}
+@article{He2024,
+  title = {Starfysh integrates spatial transcriptomic and histologic data to reveal heterogeneous tumor–immune hubs},
+  ISSN = {1546-1696},
+  url = {http://dx.doi.org/10.1038/s41587-024-02173-8},
+  DOI = {10.1038/s41587-024-02173-8},
+  journal = {Nature Biotechnology},
+  publisher = {Springer Science and Business Media LLC},
+  author = {He,  Siyu and Jin,  Yinuo and Nazaret,  Achille and Shi,  Lingting and Chen,  Xueer and Rampersaud,  Sham and Dhillon,  Bahawar S. and Valdez,  Izabella and Friend,  Lauren E. and Fan,  Joy Linyue and Park,  Cameron Y. and Mintz,  Rachel L. and Lao,  Yeh-Hsing and Carrera,  David and Fang,  Kaylee W. and Mehdi,  Kaleem and Rohde,  Madeline and McFaline-Figueroa,  José L. and Blei,  David and Leong,  Kam W. and Rudensky,  Alexander Y. and Plitas,  George and Azizi,  Elham},
+  year = {2024},
+  month = mar 
 }
-```
-### Chicago
-```
-He, Siyu, Yinuo Jin, Achille Nazaret, Lingting Shi, Xueer Chen, Sham Rampersaud, Bahawar S. Dhillon et al. "Starfysh reveals heterogeneous spatial dynamics in the breast tumor microenvironment." bioRxiv (2022).
 ```
 
 If you have questions, please contact the authors:

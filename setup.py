@@ -14,7 +14,7 @@ nb_requirements = [
 
 setup(
     name="Starfysh",
-    version="1.2.1",
+    version="1.2.0",
     description="Spatial Transcriptomic Analysis using Reference-Free auxiliarY deep generative modeling and Shared Histology",
     authors=["Siyu He", "Yinuo Jin", "Achille Nazaret"],
     url="https://starfysh.readthedocs.io",

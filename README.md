@@ -12,7 +12,7 @@ Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Tr
 
 <img src=figure/github_figure_2.png width="1000" />
 
-## Quickstart tutorials
+### Quickstart tutorials
   - [1. Basic deconvolution on an example breast cancer data (dataset & signature files included).](notebooks/Starfysh_tutorial_real.ipynb)
   - [2. Histology integration & deconvolution w/ archetypal analysis priorswithout pre-defined signatures.](notebooks/Starfysh_tutorial_real_wo_signatures.ipynb) 
   - [3. Multi-sample integration](notebooks/Starfysh_tutorial_integration.ipynb)
@@ -23,17 +23,8 @@ Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Tr
 
 Please refer to [Starfysh Documentation](http://starfysh.readthedocs.io) for additional tutorials & APIs
 
-## Update
-
-- V 1.1.1
-  - Histology integration & Sample integration 
-- V 1.1.0
-  - Simplified visualizations of deconvolution & gene expression predictions
-- V 1.0.0
-  - [Example dataset](https://drive.google.com/drive/folders/15mK8E0qosELLCFMiDMdPQg8wYcB8mVUv?usp=share_link)
-
-
-## Installation
+### Installation
+Github-version installation:
 ```bash
 # Step 1: Clone the Repository
 git clone https://github.com/azizilab/starfysh.git
@@ -45,33 +36,22 @@ cd starfysh
 pip install .
 ```
 
+PyPI release:
+```bash
+pip install starfysh
+```
 
-## Models & I/O:
-
-- Semi-supervised learning with Auxiliary Variational Autoencoder (AVAE) for cell-type deconvolution
-- Input:
-
+### Model Input:
   - Spatial Transcriptomics count matrix
   - Annotated signature gene sets (see [example](https://drive.google.com/file/d/1AXWQy_mwzFEKNjAdrJjXuegB3onxJoOM/view?usp=share_link))
   - (Optional): paired H&E image
 
-- Output:
-
-  - Spot-wise deconvolution matrix (`q(c)`)
-  - Low-dimensional manifold representation (`q(z)`)
-  - Spatial hubs (in-sample or multiple-sample integration)
-  - Co-localization networks across cell types and Spatial receptor-ligand (R-L) interactions
-  - Reconstructed count matrix (`p(x)`)
-
-## Features:
-
+### Features:
 - Deconvolving cell types & discovering novel, unannotated cell states
-
 - Integrating with histology images and multi-sample integration
-
 - Downstream analysis: spatial hub identification, cell-type colocalization networks & receptor-ligand (R-L) interactions
 
-## Directories
+### Directories
 
 ```
 .
@@ -80,7 +60,7 @@ pip install .
 ├── starfysh:       Starfysh core model
 ```
 
-## How to cite Starfysh
+### How to cite Starfysh
 Please cite [Starfysh paper published in Nature Biotechnology](https://www.nature.com/articles/s41587-024-02173-8#citeas): 
 ```
 He, S., Jin, Y., Nazaret, A. et al.

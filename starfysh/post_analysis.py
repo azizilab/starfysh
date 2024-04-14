@@ -9,6 +9,7 @@ import seaborn as sns
 from starfysh import utils
 import umap
 from scipy.stats import pearsonr, gaussian_kde
+from sklearn.neighbors import KNeighborsRegressor
 
 
 
@@ -18,8 +19,9 @@ def get_z_umap(qz_m):
     return u
 
 
-def plot_type_all(inference_outputs,u, proportions, figsize=(4, 4)):
-    qc_m = inference_outputs["qc_m"].detach().cpu().numpy()
+def plot_type_all(model, adata, proportions, figsize=(4, 4)):
+    u = get_z_umap(adata.obsm['qz_m'])
+    qc_m = adata.obsm["qc_m"]
     group_c = np.argmax(qc_m,axis=1)
     
     fig, ax = plt.subplots(figsize=figsize, dpi=300)
@@ -28,18 +30,15 @@ def plot_type_all(inference_outputs,u, proportions, figsize=(4, 4)):
         plt.scatter(u[group_c==i,0],u[group_c==i,1],s=1,c = qc_m[group_c==i,i], cmap=cmaps[i])
 
     # project the model's u on the umap
-    from sklearn.neighbors import KNeighborsRegressor
     knr = KNeighborsRegressor(10)
-    knr.fit(inference_outputs["qz_m"].detach().cpu().numpy(), u)
-    qu_umap = knr.predict(inference_outputs["qu_m"].detach().cpu().numpy())
-    plt.scatter(
-        *qu_umap.T,
-        c=["blue", "green", "red", "orange", "purple"],
-        edgecolors="black",
-    )
+    knr.fit(adata.obsm["qz_m"], u)
+    qu_umap = knr.predict(adata.uns['qu'])
+    ax.scatter(*qu_umap.T, c='yellow', edgecolors='black',
+               s=np.exp(model.qs_logm.cpu().detach()).sum(1)**1/2)
 
     plt.legend(proportions.columns,loc='right', bbox_to_anchor=(2.2,0.5),)
     plt.axis('off')
+    return fig, ax
     
     
 def get_corr_map(inference_outputs,  proportions):

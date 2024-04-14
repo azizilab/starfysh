@@ -1,4 +1,9 @@
+import os
+import multiprocessing
 import logging
+
+n_cores = multiprocessing.cpu_count()
+os.environ["NUMEXPR_MAX_THREADS"] = str(n_cores)
 
 # Configure global logging format
 logging.basicConfig(

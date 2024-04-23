@@ -89,7 +89,7 @@ class VisiumArguments:
         self.adata_scale = adata_scale[:, adata.var_names]
         
         # Calculate UMAPs after selecting HVGs || markers
-         sc.pp.pca(self.adata)
+        sc.pp.pca(self.adata)
         sc.pp.pca(self.adata_norm)
         
         sc.pp.neighbors(self.adata, n_neighbors=30, n_pcs=50)

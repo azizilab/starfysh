@@ -533,10 +533,7 @@ def preprocess(
         adata.var_names.str.startswith('MT-'),
         adata.var_names.str.startswith('mt-')
     )
-    adata.var['rb'] = np.logical_or(
-        adata.var_names.str.startswith('RP-'),
-        adata.var_names.str.startswith('rp-')
-    )
+    adata.var['rb'] = adata.var_names.str.startswith(('RP', 'Rp', 'rp'))
 
     sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], inplace=True)
     mask_cell = adata.obs['pct_counts_mt'] < mt_thld

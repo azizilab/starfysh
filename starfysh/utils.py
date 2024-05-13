@@ -99,10 +99,11 @@ class VisiumArguments:
         
         # Update spatial information to adata if it's not appended upon data loading
         if 'spatial' not in adata.uns_keys():
-            if self.img is None and self.scalefactor is None:  # simulation use UMAP to represent actual locations
+            if self.img is None and self.scalefactor is None:  # simulation
                 self.adata.obsm['spatial'] = self.adata.obsm['X_umap']
             else:
                 self._update_spatial_info(self.params['sample_id'])
+        self.adata.obsm['spatial'] = self.adata.obsm['spatial'].astype(np.float32)  # Type casting 
 
         # Get smoothed library size
         LOGGER.info('Smoothing library size by taking averaging with neighbor spots...')
@@ -112,8 +113,7 @@ class VisiumArguments:
         self.win_loglib = get_windowed_library(self.adata,
                                                self.map_info,
                                                self.log_lib,
-                                               window_size=self.params['window_size']
-                                               )
+                                               window_size=self.params['window_size'])
 
         # Retrieve & normalize signature gexp
         LOGGER.info('Retrieving & normalizing signature gene expressions...')
@@ -533,8 +533,8 @@ def preprocess(
         adata.var_names.str.startswith('MT-'),
         adata.var_names.str.startswith('mt-')
     )
-    adata.var['rb'] = (
-        adata.var_names.str.startswith('RP-') |
+    adata.var['rb'] = np.logical_or(
+        adata.var_names.str.startswith('RP-'),
         adata.var_names.str.startswith('rp-')
     )
 

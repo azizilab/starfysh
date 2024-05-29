@@ -693,7 +693,6 @@ def preprocess_img(
                 )
             )
 
-            # adata_image = (adata_image-adata_image.min())/(adata_image.max()-adata_image.min())
             if adata_image.max() <= 1:
                 adata_image = (adata_image * 255).astype(np.uint8)
     
@@ -722,7 +721,7 @@ def preprocess_img(
             adata_image = adata_image_h
         else:
             adata_image = io.imread(os.path.join(data_path, sample_id, 'spatial', 'tissue_hires_image.png'))
-            # adata_image = (adata_image-adata_image.min())/(adata_image.max()-adata_image.min())
+            adata_image = (adata_image-adata_image.min())/(adata_image.max()-adata_image.min())
     else:
         adata_image = None
 

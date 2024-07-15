@@ -87,19 +87,11 @@ class VisiumArguments:
         LOGGER.info('Subsetting highly variable & signature genes ...')
         self.adata, self.adata_norm = get_adata_wsig(adata, adata_norm, gene_sig)
         self.adata_scale = adata_scale[:, adata.var_names]
-        
-        # Calculate UMAPs after selecting HVGs || markers
-        sc.pp.pca(self.adata)
-        sc.pp.pca(self.adata_norm)
-        
-        sc.pp.neighbors(self.adata, n_neighbors=30, n_pcs=50)
-        sc.pp.neighbors(self.adata_norm, n_neighbors=30, n_pcs=50)
-        sc.tl.umap(self.adata, min_dist=0.2)
-        sc.tl.umap(self.adata_norm, min_dist=0.2)
-        
+                
         # Update spatial information to adata if it's not appended upon data loading
         if 'spatial' not in adata.uns_keys():
             if self.img is None and self.scalefactor is None:  # simulation
+                _ = get_umap(self.adata, display=False)
                 self.adata.obsm['spatial'] = self.adata.obsm['X_umap']
             else:
                 self._update_spatial_info(self.params['sample_id'])

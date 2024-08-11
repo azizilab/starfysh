@@ -36,10 +36,6 @@ cd starfysh
 pip install .
 ```
 
-PyPI release:
-```bash
-pip install starfysh
-```
 
 ### Model Input:
   - Spatial Transcriptomics count matrix

@@ -664,28 +664,23 @@ def preprocess_img(
             img = (img-img.min())/(img.max()-img.min())
         
         else:
-            img = io.imread(
-                os.path.join(
-                    data_path, sample_id, 'spatial', 'tissue_hires_image.png'
-                )
-            )
-
+            img = io.imread(filename)
             if img.max() <= 1:
                 img = (img * 255).astype(np.uint8)
         
-            # create stain matrix
+            # Create stain matrix
             stains = ['hematoxylin','eosin', 'null']
             stain_cmap = htk.preprocessing.color_deconvolution.stain_color_map             
             W = np.array([stain_cmap[st] for st in stains]).T
 
-            # perform standard color deconvolution
+            # Color deconvolution    
             imDeconvolved = htk.preprocessing.color_deconvolution.color_deconvolution(img, W)
-            img = imDeconvolved.Stains[:,:,1]
-            img = (img - img.min()) / (img.max()-img.min()) 
-            img = (img*255).astype(np.uint8)
+            img = imDeconvolved.Stains[:,:,0]   # H-channel
 
-            clahe = cv2.createCLAHE(clipLimit=255, tileGridSize=(8, 8))
-            img = clahe.apply(img)
+            # Take inverse of H-channel (approx. cell density)      
+            img = (img - img.min()) / (img.max()-img.min())       
+            img = img.max() - img  
+            img = (img*255).astype(np.uint8)
     else:
         img = None
 

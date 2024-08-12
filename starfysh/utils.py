@@ -57,15 +57,15 @@ class VisiumArguments:
         self.adata_norm = adata_norm
         self.gene_sig = gene_sig
         self.map_info = img_metadata['map_info'].iloc[:, :4].astype(float)
+        self.scalefactor = img_metadata['scalefactor']
         self.img = img_metadata['img']
         self.img_patches = None 
-        self.scalefactor = img_metadata['scalefactor']
+        self.eps = 1e-6
 
         self.params = {
             'sample_id': 'ST', 
             'n_anchors': int(adata.shape[0]),
             'patch_r': 16,
-            'sig_version': 'gene_score',
             'signif_level': 3,
             'window_size': 1,
             'n_img_chan': 1
@@ -97,13 +97,8 @@ class VisiumArguments:
         sc.tl.umap(self.adata, min_dist=0.2)
         sc.tl.umap(self.adata_norm, min_dist=0.2)
         
-        # Update spatial information to adata if it's not appended upon data loading
-        if 'spatial' not in adata.uns_keys():
-            if self.img is None and self.scalefactor is None:  # simulation
-                self.adata.obsm['spatial'] = self.adata.obsm['X_umap']
-            else:
-                self._update_spatial_info(self.params['sample_id'])
-        self.adata.obsm['spatial'] = self.adata.obsm['spatial'].astype(np.float32)  # Type casting 
+        # Update spatial metadata
+        self._update_spatial_info(self.params['sample_id'])
 
         # Get smoothed library size
         LOGGER.info('Smoothing library size by taking averaging with neighbor spots...')
@@ -115,28 +110,19 @@ class VisiumArguments:
                                                self.log_lib,
                                                window_size=self.params['window_size'])
 
-        # Retrieve & normalize signature gexp
+        # Retrieve & normalize signature gene expressions by 
+        # comparing w/ randomized base expression (`sc.tl.score_genes`) 
         LOGGER.info('Retrieving & normalizing signature gene expressions...')
         self.sig_mean = self._get_sig_mean()
-
-        # normalized by dividing by the sum of expression
-        if self.params['sig_version'] == 'norm':
-            self.sig_mean_norm = self._norm_sig()
-
-        # normalized by `sc.tl.score_genes` (subtracting w/ binned ref. gexp)
-        elif self.params['sig_version'] == 'gene_score':
-            self.sig_mean_norm = self._calc_gene_scores()
-
-        else:
-            raise ValueError('Signature mean gexp normalozation [{}] not implemented'.format(self.params['sig_version']))
-                    
+        self.sig_mean_norm = self._calc_gene_scores()
+       
         # Get anchor spots
         LOGGER.info('Identifying anchor spots (highly expression of specific cell-type signatures)...')
         anchor_info = self._compute_anchors()
 
         # row-norm; "ReLU" on signature scores for valid dirichlet param
-        self.sig_mean_norm[self.sig_mean_norm < 0] = 1e-5
-        self.sig_mean_norm = self.sig_mean_norm.div(self.sig_mean_norm.sum(1),axis=0)
+        self.sig_mean_norm[self.sig_mean_norm < 0] = self.eps
+        self.sig_mean_norm = self.sig_mean_norm.div(self.sig_mean_norm.sum(1), axis=0)
         self.sig_mean_norm.fillna(1/self.sig_mean_norm.shape[1], inplace=True)
 
         self.pure_spots, self.pure_dict, self.pure_idx = anchor_info        
@@ -158,8 +144,9 @@ class VisiumArguments:
         
         if len(empty_indices) > 0:
             raise ValueError("Cell type(s) {} has no anchors significantly enriched for its signatures,"
-                             "please lower outlier stats `signif_level` or try zscore-based signature"
-                             "scoring method (`sig_version` = 'zscore' or 'zscore_raw'".format(anchors_df.columns[empty_indices].to_list()))
+                             "please lower outlier stats `signif_level` or try zscore-based signature".format(
+                                 anchors_df.columns[empty_indices].to_list()
+                            ))
         
         return anchors_df.applymap(
             lambda x:
@@ -234,25 +221,12 @@ class VisiumArguments:
     def _update_anchors(self):
         """Re-calculate anchor spots given updated gene signatures"""
         self.sig_mean = self._get_sig_mean()
-
-        # normalized by dividing by the sum of expression
-        if self.params['sig_version'] == 'norm':
-            self.sig_mean_norm = self._norm_sig(rownorm=False, scale=False)
-
-        # normalized by `sc.tl.score_genes` (subtracting w/ binned ref. gexp)
-        elif self.params['sig_version'] == 'gene_score':
-            self.sig_mean_norm = self._calc_gene_scores()
-
-        else:
-            raise ValueError('Signature mean gexp normalozation [{}] not implemented'.format(self.params['sig_version']))
-
+        self.sig_mean_norm = self._calc_gene_scores()
         self.adata.uns['cell_types'] = list(self.gene_sig.columns)
 
         LOGGER.info('Recalculating anchor spots (highly expression of specific cell-type signatures)...')
         anchor_info = self._compute_anchors()
-
-        # row-norm
-        self.sig_mean_norm[self.sig_mean_norm < 0] = 0
+        self.sig_mean_norm[self.sig_mean_norm < 0] = self.eps
         self.sig_mean_norm.fillna(1/self.sig_mean_norm.shape[1], inplace=True)
         self.pure_spots, self.pure_dict, self.pure_idx = anchor_info
               
@@ -278,24 +252,31 @@ class VisiumArguments:
 
     def _update_spatial_info(self, sample_id):
         """Update paired spatial information to ST adata"""
-        self.adata.uns['spatial'] = {
-            sample_id: {
-                'images': {'hires': (self.img - self.img.min()) / (self.img.max() - self.img.min())},
-                'scalefactors': self.scalefactor
-            },
-        }
-
-        self.adata_norm.uns['spatial'] = {
-            sample_id: {
-                'images': {'hires': (self.img - self.img.min()) / (self.img.max() - self.img.min())},
-                'scalefactors': self.scalefactor
-            },
-        }
-        if self.img is not None and self.img.ndim == 3: # Update number of image channels
+        # Update image channel count for RGB input (`y`)
+        if self.img is not None and self.img.ndim == 3: 
             self.params['n_img_chan'] = 3
 
-        self.adata.obsm['spatial'] = self.map_info[['imagecol', 'imagerow']].values
+        if 'spatial' not in self.adata.uns_keys():
+            self.adata.uns['spatial'] = {
+                sample_id: {
+                    'images': {'hires': (self.img - self.img.min()) / (self.img.max() - self.img.min())},
+                    'scalefactors': self.scalefactor
+                },
+            }
+
+            self.adata_norm.uns['spatial'] = {
+                sample_id: {
+                    'images': {'hires': (self.img - self.img.min()) / (self.img.max() - self.img.min())},
+                    'scalefactors': self.scalefactor
+                },
+            }
+
+            self.adata.obsm['spatial'] = self.map_info[['imagecol', 'imagerow']].values
+            self.adata_norm.obsm['spatial'] = self.map_info[['imagecol', 'imagerow']].values
+
+        # Typecast: spatial coords.
         self.adata_norm.obsm['spatial'] = self.map_info[['imagecol', 'imagerow']].values
+        self.adata_norm.obsm['spatial'] = self.adata_norm.obsm['spatial'].astype(np.float32) 
         return None
 
     def _update_img_patches(self, dl_poe):
@@ -659,7 +640,7 @@ def preprocess_img(
     data_path,
     sample_id,
     adata_index,
-    hchannel=False
+    rgb_channels=True
 ):
     """
     Load and preprocess visium paired H&E image & spatial coords
@@ -672,58 +653,50 @@ def preprocess_img(
     sample_id : str
         Sample subdirectory under `data_path`
 
-    hchannel : bool
-        Whether to apply binary color deconvolution to extract hematoxylin channel
+    rgb_channels : bool
+        Whether to apply binary color deconvolution to extract 1D `eosin` channel
         Please refer to:
         https://digitalslidearchive.github.io/HistomicsTK/examples/color_deconvolution.html
 
     Returns
     -------
-    adata_image : np.ndarray
+    img : np.ndarray
         Processed histology image
 
     map_info : np.ndarray
         Spatial coords of spots (dim: [S, 2])
     """
-    if os.path.isfile(os.path.join(data_path, sample_id, 'spatial', 'tissue_hires_image.png')):
-        if hchannel:
-            adata_image = io.imread(
+    filename = os.path.join(data_path, sample_id, 'spatial', 'tissue_hires_image.png')
+    if os.path.isfile(filename):
+        if rgb_channels:
+            img = io.imread(filename)
+            img = (img-img.min())/(img.max()-img.min())
+        
+        else:
+            img = io.imread(
                 os.path.join(
                     data_path, sample_id, 'spatial', 'tissue_hires_image.png'
                 )
             )
 
-            if adata_image.max() <= 1:
-                adata_image = (adata_image * 255).astype(np.uint8)
-    
-            stain_color_map = htk.preprocessing.color_deconvolution.stain_color_map
-            stains = ['hematoxylin',  # nuclei stain
-                      'eosin',  # cytoplasm stain
-                      'null']  # set to null if input contains only two stains
+            if img.max() <= 1:
+                img = (img * 255).astype(np.uint8)
+        
             # create stain matrix
-            W = np.array([stain_color_map[st] for st in stains]).T
+            stains = ['hematoxylin','eosin', 'null']
+            stain_cmap = htk.preprocessing.color_deconvolution.stain_color_map             
+            W = np.array([stain_cmap[st] for st in stains]).T
 
             # perform standard color deconvolution
-            imDeconvolved = htk.preprocessing.color_deconvolution.color_deconvolution(adata_image, W)
-
-            adata_image_h = imDeconvolved.Stains[:,:,0]
-            #adata_image_e = imDeconvolved.Stains[:,:,2]
-
-            adata_image_h = (adata_image_h - adata_image_h.min()) / (adata_image_h.max()-adata_image_h.min()) 
-            adata_image_h = (adata_image_h*255).astype(np.uint8)
-            #adata_image_e = (adata_image_e - adata_image_e.min()) / (adata_image_e.max()-adata_image_e.min()) 
-            #adata_image_e = (adata_image_e*255).astype(np.uint8)
+            imDeconvolved = htk.preprocessing.color_deconvolution.color_deconvolution(img, W)
+            img = imDeconvolved.Stains[:,:,1]
+            img = (img - img.min()) / (img.max()-img.min()) 
+            img = (img*255).astype(np.uint8)
 
             clahe = cv2.createCLAHE(clipLimit=255, tileGridSize=(8, 8))
-            adata_image_h = clahe.apply(adata_image_h)
-            #adata_image_e = clahe.apply(adata_image_e)
-            
-            adata_image = adata_image_h
-        else:
-            adata_image = io.imread(os.path.join(data_path, sample_id, 'spatial', 'tissue_hires_image.png'))
-            adata_image = (adata_image-adata_image.min())/(adata_image.max()-adata_image.min())
+            img = clahe.apply(img)
     else:
-        adata_image = None
+        img = None
 
     # Mapping images to location
     f = open(os.path.join(data_path, sample_id, 'spatial', 'scalefactors_json.json', ))
@@ -739,7 +712,7 @@ def preprocess_img(
     map_info.loc[:, 'sample'] = sample_id
 
     return {
-        'img': adata_image,
+        'img': img,
         'map_info': map_info,
         'scalefactor': json_info
     }
@@ -749,6 +722,7 @@ def get_adata_wsig(adata, adata_norm, gene_sig):
     """
     Select intersection of HVGs from dataset & signature annotations
     """
+    # TODO: in-place operators for `adata`
     hvgs = adata.var_names[adata.var.highly_variable]
     unique_sigs = np.unique(gene_sig.values[~pd.isna(gene_sig)])
     genes_to_keep = np.union1d(
@@ -805,24 +779,29 @@ def get_windowed_library(adata_sample, map_info, library, window_size):
     return library_n
 
 
-def append_sigs(gene_sig, factor, sigs, n_genes=5):
+def append_sigs(gene_sig, factor, sigs, n_genes=10):
     """
     Append list of genes to a given cell type as additional signatures or
     add novel cell type / states & their signatures
     """
     assert len(sigs) > 0, "Signature list must have positive length"
     gene_sig_new = gene_sig.copy()
+
     if not isinstance(sigs, list):
         sigs = sigs.to_list()
     if n_genes < len(sigs):
         sigs = sigs[:n_genes]
 
-    temp = set([i for i in gene_sig[factor] if str(i) != 'nan']+[i for i in sigs if str(i) != 'nan'])
-    if len(temp) > gene_sig_new.shape[0]:
-        gene_sig_new = gene_sig_new.append(pd.DataFrame([[np.nan]*gene_sig.shape[1]]*(len(temp)-gene_sig_new.shape[0]), columns=gene_sig_new.columns), ignore_index=True)
+    markers = set([i for i in gene_sig[factor] if str(i) != 'nan'] +
+                  [i for i in sigs if str(i) != 'nan'])
+    nrow_diff = int(np.abs(len(markers)-gene_sig_new.shape[0]))
+    if len(markers) > gene_sig_new.shape[0]:
+        df_dummy = pd.DataFrame([[np.nan] * gene_sig.shape[1]] * nrow_diff, 
+                                columns=gene_sig_new.columns)
+        gene_sig_new = pd.concat([gene_sig_new, df_dummy], ignore_index=True)
     else:
-        temp = list(temp)+[np.nan]*(gene_sig_new.shape[0]-len(temp))
-    gene_sig_new[factor] = list(temp)
+        markers = list(markers) + [np.nan]*nrow_diff
+    gene_sig_new[factor] = list(markers)
 
     return gene_sig_new
 
@@ -830,9 +809,8 @@ def append_sigs(gene_sig, factor, sigs, n_genes=5):
 def refine_anchors(
     visium_args,
     aa_model,
-    thld=0.35,
-    n_genes=5,
-    n_iters=1
+    anchor_threshold=0.1,
+    n_genes=10
 ):
     """
     Refine anchor spots & marker genes with archetypal analysis. We append DEGs
@@ -847,8 +825,9 @@ def refine_anchors(
     aa_model : ArchetypalAnalysis
         Pre-computed archetype object
 
-    thld : float
-        Threshold cutoff for anchor-archetype mapping
+    anchor_threshold : float
+        Top percent of anchor spots per cell-type
+        for archetypal mapping
 
     n_genes : int
         # archetypal marker genes to append per refinement iteration
@@ -860,36 +839,26 @@ def refine_anchors(
     """
     # TODO: integrate into `visium_args` class
 
+    n_spots = visium_args.adata.shape[0]
     gene_sig = visium_args.gene_sig.copy()
-    anchors = visium_args.get_anchors()
-    map_df, _ = aa_model.assign_archetypes(anchors) # Retract anchor-archetype mapping scores
-    markers_df = aa_model.find_markers(n_markers=50, display=False)
+    anchors_df = visium_args.get_anchors()
+    n_top_anchors = int(anchor_threshold*n_spots)
 
-    for iteration in range(n_iters):
-        print('Refining round {}...'.format(iteration + 1))
-        map_used = map_df.copy()
+    # Retrieve anchor-archetype mapping scores
+    map_df, map_dict = aa_model.assign_archetypes(anchor_df=anchors_df[:n_top_anchors],
+                                           r=n_top_anchors) 
+    markers_df = aa_model.find_markers(display=False)
 
-        # (1). Update signatures
-        for i in range(gene_sig.shape[1]):
-            selected_arch = map_used.columns[map_used.loc[map_used.index[i],:]>=thld]
-            for j in selected_arch:
-                print('appending {0} genes in {1} to {2}...'.format(
-                    str(n_genes), j, map_used.index[i]
-                ))
+    # (1). Update signatures
+    for cell_type, archetype in map_dict.items():
+        gene_sig = append_sigs(gene_sig=gene_sig,
+                               factor=cell_type,
+                               sigs=markers_df[archetype],
+                               n_genes=n_genes)
 
-                gene_sig = append_sigs(
-                    gene_sig=gene_sig,
-                    factor=map_used.index[i],
-                    sigs=markers_df[j],
-                    n_genes=n_genes
-                )
-
-        # (2). Update anchors & re-compute anchor-archetype mapping
-        visium_args.gene_sig = gene_sig
-        visium_args._update_anchors()
-        anchors = visium_args.get_anchors()
-        map_df, _ = aa_model.assign_archetypes(anchors)
-
+    # (2). Update data args.
+    visium_args.gene_sig = gene_sig
+    visium_args._update_anchors()
     return visium_args
 
 

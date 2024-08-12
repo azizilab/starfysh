@@ -4,6 +4,8 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
+from starfysh import LOGGER
+
 
 #---------------------------
 # Single Sample dataloader
@@ -52,7 +54,6 @@ class VisiumPoEDataSet(VisiumDataset):
         adata,
         args,
     ):
-
         super(VisiumPoEDataSet, self).__init__(adata, args)
         self.image = args.img.astype(np.float64)
         self.map_info = args.map_info
@@ -83,9 +84,13 @@ class VisiumPoEDataSet(VisiumDataset):
             left = max(0, self.r-xc)
             right = w if w > (xc+self.r) else w-(xc+self.r)
 
-            patch = np.zeros(patch_dim)
-            patch[top:bottom, left:right] = self.image[yl:yr, xl:xr]
-            self.spot_img_stack.append(patch)
+            try:
+                patch = np.zeros(patch_dim)
+                patch[top:bottom, left:right] = self.image[yl:yr, xl:xr]
+                self.spot_img_stack.append(patch)
+            except ValueError:
+                LOGGER.warning('Skipping the patch loading of an edge spot...')
+
 
     def __len__(self):
         return len(self.expr_mat)
@@ -124,12 +129,6 @@ class IntegrativeDataset(VisiumDataset):
         self.image = args.img
         self.map_info = args.map_info
         self.r = args.params['patch_r']
-        
-
-        assert self.image is not None,\
-            "Empty paired H&E image," \
-            "please use regular `Starfysh` without PoE integration" \
-            "if your dataset doesn't contain histology image"
 
     def __len__(self):
         return len(self.expr_mat)
@@ -153,7 +152,6 @@ class IntegrativePoEDataset(VisiumDataset):
         self,
         adata,
         args,
-        
     ):
         super(IntegrativePoEDataset, self).__init__(adata, args)
         self.image = args.img
@@ -172,14 +170,12 @@ class IntegrativePoEDataset(VisiumDataset):
             
             scalef_i = args.scalefactor[sample_id]['tissue_hires_scalef']  # High-res scale factor
             h, w = self.image[sample_id].shape[:2]
-            #h, w, d = self.image[sample_id].shape
             patch_dim = (self.r*2, self.r*2, 3) if self.image[sample_id].ndim == 3 else (self.r*2, self.r*2)
-            list_ = adata.obs['sample']==sample_id
+
+            list_ = adata.obs['sample'] == sample_id
             for i in range(len(self.expr_mat.loc[list_,:])):
-                
                 xc = int(np.round(self.map_info.loc[list_,:].iloc[i]['imagecol'] * scalef_i))
                 yc = int(np.round(self.map_info.loc[list_,:].iloc[i]['imagerow'] * scalef_i))
-                
 
                 # boundary conditions: edge spots
                 yl, yr = max(0, yc-self.r), min(self.image[sample_id].shape[0], yc+self.r)
@@ -188,13 +184,13 @@ class IntegrativePoEDataset(VisiumDataset):
                 bottom = h if h > (yc+self.r) else h-(yc+self.r)
                 left = max(0, self.r-xc)
                 right = w if w > (xc+self.r) else w-(xc+self.r)
-                
-                patch = np.zeros(patch_dim)
-                patch[top:bottom, left:right] = self.image[sample_id][yl:yr, xl:xr]
-    
-
-                spot_img_all.append(patch)
-                
+            
+                try:
+                    patch = np.zeros(patch_dim)
+                    patch[top:bottom, left:right] = self.image[sample_id][yl:yr, xl:xr]
+                    spot_img_all.append(patch)
+                except ValueError:
+                    LOGGER.warning('Skipping the patch loading of an edge spot...')                
                 
         self.spot_img_stack = list(spot_img_all)
         #print(self.spot_img_stack.shape)

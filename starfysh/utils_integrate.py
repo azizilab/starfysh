@@ -59,13 +59,15 @@ class VisiumArguments_integrate:
         self.adata = adata
         self.adata_norm = adata_norm
         self.gene_sig = gene_sig
+        self.eps = 1e-6
+        
         self.params = {
             'sample_id': 'ST', 
             'n_anchors': int(adata.shape[0]),
             'patch_r': 13,
-            'sig_version': 'gene_score',
             'signif_level': 3,
-            'window_size': 3,
+            'window_size': 1,
+            'n_img_chan': 1
         }
         
         for k, v in kwargs.items():
@@ -106,17 +108,11 @@ class VisiumArguments_integrate:
         self.adata, self.adata_norm = get_adata_wsig(adata, adata_norm, gene_sig)
         self.adata_scale = adata_scale[:, adata.var_names]
         
-        # Update spatial information to adata if it's not appended upon data loading
-        if 'spatial' not in adata.uns_keys():
-            if self.img is None and self.scalefactor is None:  # simulation use UMAP to represent actual locations
-                self.adata.obsm['spatial'] = self.adata.obsm['X_umap']
-            else:
-                self._update_spatial_info(self.params['sample_id'])
+        # Update spatial metadata
+        self._update_spatial_info(self.params['sample_id'])
 
         # Get smoothed library size
         LOGGER.info('Smoothing library size by taking averaging with neighbor spots...')
-        
-        
         log_lib = np.log1p(self.adata.X.sum(1))
         self.log_lib = np.squeeze(np.asarray(log_lib)) if log_lib.ndim > 1 else log_lib
         
@@ -134,7 +130,6 @@ class VisiumArguments_integrate:
 
         # Retrieve & normalize signature gexp
         LOGGER.info('Retrieving & normalizing signature gene expressions...')
-        
         sig_mean_temp = []
         for i in individual_args.keys():
             sig_mean_temp.append(individual_args[i].sig_mean)
@@ -170,8 +165,9 @@ class VisiumArguments_integrate:
         
         if len(empty_indices) > 0:
             raise ValueError("Cell type(s) {} has no anchors significantly enriched for its signatures,"
-                             "please lower outlier stats `signif_level` or try zscore-based signature"
-                             "scoring method (`sig_version` = 'zscore' or 'zscore_raw'".format(anchors_df.columns[empty_indices].to_list()))
+                             "please lower outlier stats `signif_level`".format(
+                                 anchors_df.columns[empty_indices].to_list()
+                            ))
         
         return anchors_df.applymap(
             lambda x:
@@ -226,11 +222,9 @@ class VisiumArguments_integrate:
         Calculate top `anchor_spots` significantly enriched for given cell type(s)
         determined by gene set scores from signatures
         """
-        score_type = self.params['sig_version']
         score_df = self.sig_mean_norm
         signif_level = self.params['signif_level']
         n_anchor = self.params['n_anchors']
-        n_cell_types = self.sig_mean_norm.shape[1]
 
         top_expr_spots = (-score_df.values).argsort(axis=0)[:n_anchor, :]
         pure_spots = np.transpose(np.array(score_df.index)[top_expr_spots])
@@ -249,25 +243,12 @@ class VisiumArguments_integrate:
     def _update_anchors(self):
         """Re-calculate anchor spots given updated gene signatures"""
         self.sig_mean = self._get_sig_mean()
-
-        # normalized by dividing by the sum of expression
-        if self.params['sig_version'] == 'norm':
-            self.sig_mean_norm = self._norm_sig(rownorm=False, scale=False)
-
-        # normalized by `sc.tl.score_genes` (subtracting w/ binned ref. gexp)
-        elif self.params['sig_version'] == 'gene_score':
-            self.sig_mean_norm = self._calc_gene_scores()
-
-        else:
-            raise ValueError('Signature mean gexp normalozation [{}] not implemented'.format(self.params['sig_version']))
-
+        self.sig_mean_norm = self._calc_gene_scores()
         self.adata.uns['cell_types'] = list(self.gene_sig.columns)
 
         LOGGER.info('Recalculating anchor spots (highly expression of specific cell-type signatures)...')
         anchor_info = self._compute_anchors()
-
-        # row-norm
-        self.sig_mean_norm[self.sig_mean_norm < 0] = 0
+        self.sig_mean_norm[self.sig_mean_norm < 0] = self.eps
         self.sig_mean_norm.fillna(1/self.sig_mean_norm.shape[1], inplace=True)
         self.pure_spots, self.pure_dict, self.pure_idx = anchor_info
               
@@ -293,22 +274,31 @@ class VisiumArguments_integrate:
 
     def _update_spatial_info(self, sample_id):
         """Update paired spatial information to ST adata"""
-        
-        self.adata.uns['spatial'] = {
-            i: {
-                'images': {'hires': (self.img[i] - self.img[i].min()) / (self.img[i].max() - self.img[i].min())},
-                'scalefactors': self.scalefactor
-            } for i in sample_id
-        }
+        # Update image channel count for RGB input (`y`)
+        if self.img is not None and self.img.ndim == 3: 
+            self.params['n_img_chan'] = 3
 
-        self.adata_norm.uns['spatial'] = {
-            i: {
-                'images': {'hires': (self.img[i] - self.img[i].min()) / (self.img[i].max() - self.img[i].min())},
-                'scalefactors': self.scalefactor[i]
-            } for i in sample_id
-        }
-        self.adata.obsm['spatial'] = self.map_info[['imagecol', 'imagerow']].values
+        if 'spatial' not in self.adata.uns_keys():
+            self.adata.uns['spatial'] = {
+                sample_id: {
+                    'images': {'hires': (self.img - self.img.min()) / (self.img.max() - self.img.min())},
+                    'scalefactors': self.scalefactor
+                },
+            }
+
+            self.adata_norm.uns['spatial'] = {
+                sample_id: {
+                    'images': {'hires': (self.img - self.img.min()) / (self.img.max() - self.img.min())},
+                    'scalefactors': self.scalefactor
+                },
+            }
+
+            self.adata.obsm['spatial'] = self.map_info[['imagecol', 'imagerow']].values
+            self.adata_norm.obsm['spatial'] = self.map_info[['imagecol', 'imagerow']].values
+
+        # Typecast: spatial coords.
         self.adata_norm.obsm['spatial'] = self.map_info[['imagecol', 'imagerow']].values
+        self.adata_norm.obsm['spatial'] = self.adata_norm.obsm['spatial'].astype(np.float32) 
         return None
 
     def _update_img_patches(self, dl_poe):

@@ -14,6 +14,35 @@ from scipy.stats import pearsonr, gaussian_kde
 from .post_analysis import get_z_umap
 from .utils import extract_feature
 
+
+def plot_integrated_spatial_feature(data, 
+                                    sample_id,
+                                    vmin=None,
+                                    vmax=None,
+                                    spot_size = 1,
+                                    figsize=(2.5, 2),
+                                    fig_dpi = 300,
+                                    cmap = 'Blues',
+                                    legend_on = True,
+                                    legend_loc = (2,0.5)
+                                   ):
+
+    adata_ann = data[data.obs['sample']==sample_id]
+    #color_idx_list = np.array(adata_ann.obs['pheno_louvain']).astype(int)
+    color_idx_list = np.array(adata_ann.obs['pheno_louvain']).astype(int)
+    all_loc = np.array(adata_ann.obsm['spatial'])
+    fig,axs= plt.subplots(1,1,figsize=figsize,dpi=500)
+    for i in np.unique(color_idx_list):
+        g=axs.scatter(all_loc[color_idx_list==i,0],-all_loc[color_idx_list==i, 1],s=spot_size,marker='h',c=cmap[i])
+
+    if legend_on:
+        plt.legend(list(np.unique(color_idx_list)),title='Hub region',loc='right',bbox_to_anchor=legend_loc)
+    #fig.colorbar(g,label=label)
+    #plt.title(sample_id)
+    axs.set_xticks([])
+    axs.set_yticks([])
+    plt.axis('off')
+    
 def plot_spatial_density(
     data,
     vmin=None,

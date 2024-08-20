@@ -1015,10 +1015,15 @@ def model_eval_integrate(
     anchor_idx = torch.Tensor(visium_args.pure_idx).to(device)
 
     with torch.no_grad():
-        inference_outputs = model.inference(x_in)
-        generative_outputs = model.generative(inference_outputs, sig_means)
+        if not poe: 
+            inference_outputs = model.inference(x_in)
+            generative_outputs = model.generative(inference_outputs, sig_means)
         if poe:           
             img_in = torch.Tensor(visium_args.get_img_patches()).float().to(device)
+            
+            inference_outputs = model.inference(x_in, img_in)
+            generative_outputs = model.generative(inference_outputs, sig_means)
+        
             img_outputs = model.predictor_img(img_in) if img_in.max() <= 1 else model.predictor_img(img_in/255)
             poe_outputs = model.predictor_poe(inference_outputs, img_outputs)
 

@@ -275,24 +275,23 @@ class VisiumArguments_integrate:
     def _update_spatial_info(self, sample_id):
         """Update paired spatial information to ST adata"""
         # Update image channel count for RGB input (`y`)
-        if self.img is not None and self.img.ndim == 3: 
+        if self.img is not None and self.img[sample_id.iloc[0]].ndim == 3: 
             self.params['n_img_chan'] = 3
 
         if 'spatial' not in self.adata.uns_keys():
             self.adata.uns['spatial'] = {
-                sample_id: {
-                    'images': {'hires': (self.img - self.img.min()) / (self.img.max() - self.img.min())},
+                i: {
+                    'images': {'hires': (self.img[i] - self.img[i].min()) / (self.img[i].max() - self.img[i].min())},
                     'scalefactors': self.scalefactor
-                },
+                } for i in sample_id
             }
 
             self.adata_norm.uns['spatial'] = {
-                sample_id: {
-                    'images': {'hires': (self.img - self.img.min()) / (self.img.max() - self.img.min())},
-                    'scalefactors': self.scalefactor
-                },
+                i: {
+                    'images': {'hires': (self.img[i] - self.img[i].min()) / (self.img[i].max() - self.img[i].min())},
+                    'scalefactors': self.scalefactor[i]
+                } for i in sample_id
             }
-
             self.adata.obsm['spatial'] = self.map_info[['imagecol', 'imagerow']].values
             self.adata_norm.obsm['spatial'] = self.map_info[['imagecol', 'imagerow']].values
 
@@ -372,7 +371,8 @@ def run_starfysh(
         alpha_mul=50,
         poe=False,
         device=torch.device('cpu'),
-        verbose=True
+        verbose=True,
+        
 ):
     """
     Wrapper to run starfysh deconvolution.
@@ -430,13 +430,14 @@ def run_starfysh(
         
         
         if poe:
+            
             model = AVAE_PoE(
                 adata=adata,
                 gene_sig=sig_mean_norm,
                 patch_r=visium_args.params['patch_r'],
                 win_loglib=win_loglib,
                 alpha_mul=alpha_mul,
-                n_img_chan=1
+                n_img_chan=visium_args.params['n_img_chan']
             )
             # Update patched & flattened image patches
             visium_args._update_img_patches(trainset)

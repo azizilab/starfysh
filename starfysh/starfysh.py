@@ -17,7 +17,7 @@ from torch.distributions import kl_divergence as kl
 
 # Module import
 from starfysh import LOGGER
-
+from .post_analysis import get_z_umap
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 random.seed(0)
 np.random.seed(0)
@@ -311,7 +311,7 @@ class AVAE_PoE(nn.Module):
             signature prior's confidence
 
         """
-        super(AVAE_PoE, self).__init__()
+        super().__init__()
         torch.manual_seed(seed)
 
         self.win_loglib = torch.Tensor(win_loglib)
@@ -345,7 +345,7 @@ class AVAE_PoE(nn.Module):
         )
 
         self.l_enc = nn.Sequential(
-            nn.Linear(self.c_in, self.c_hidden, bias=True),
+            nn.Linear(self.c_in+self.c_in_img, self.c_hidden, bias=True),
             nn.BatchNorm1d(self.c_hidden, momentum=0.01, eps=0.001),
             nn.ReLU(),
         )
@@ -424,11 +424,12 @@ class AVAE_PoE(nn.Module):
         sample = mu + (eps * std)  # sampling
         return sample
 
-    def inference(self, x):
+    def inference(self, x, y):
         # q(l | x)
         x_n = torch.log1p(x)  # l is inferred from log(x)
+        y_n = torch.log1p(y)
         
-        hidden = self.l_enc(x_n)
+        hidden = self.l_enc(torch.concat([x_n,y_n],axis=1))
         ql_m = self.l_enc_m(hidden)
         ql_logv = self.l_enc_logv(hidden)
         ql = self.reparameterize(ql_m, ql_logv)
@@ -816,7 +817,7 @@ def train_poe(
         img = img.reshape(mini_batch, -1).float()
         img = img.to(device)
 
-        inference_outputs = model.inference(x)  # inference for 1D expr. data
+        inference_outputs = model.inference(x,img)  # inference for 1D expr. data
         generative_outputs = model.generative(inference_outputs, xs_k)
         img_outputs = model.predictor_img(img)  # inference & generative for 2D img. data
         poe_outputs = model.predictor_poe(inference_outputs, img_outputs)  # PoE generative outputs
@@ -926,18 +927,25 @@ def model_eval(
     poe=False,
     device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 ):
+    adata_ = adata.copy()
     model.eval()
     model = model.to(device)
 
-    x_in = torch.Tensor(adata.to_df().values).to(device)
+    x_in = torch.Tensor(adata_.to_df().values).to(device)
     sig_means = torch.Tensor(visium_args.sig_mean_norm.values).to(device)
     anchor_idx = torch.Tensor(visium_args.pure_idx).to(device)
 
     with torch.no_grad():
-        inference_outputs = model.inference(x_in)
-        generative_outputs = model.generative(inference_outputs, sig_means)
+        if not poe: 
+            inference_outputs = model.inference(x_in)
+            generative_outputs = model.generative(inference_outputs, sig_means)
+        
         if poe:
+            
             img_in = torch.Tensor(visium_args.get_img_patches()).float().to(device)
+            inference_outputs = model.inference(x_in,img_in)
+            generative_outputs = model.generative(inference_outputs, sig_means)
+        
             img_outputs = model.predictor_img(img_in)
             poe_outputs = model.predictor_poe(inference_outputs, img_outputs)
 
@@ -960,7 +968,7 @@ def model_eval(
             mu=generative_outputs["px_rate"],
             theta=torch.exp(generative_outputs["px_r"])
         ).sample().detach().cpu().numpy()
-        adata.obsm['px'] = px
+        adata_.obsm['px'] = px
     except ValueError as ve:
         LOGGER.warning('Invalid Gamma distribution parameters `px_rate` or `px_r`, unable to sample inferred p(x | z)')
 
@@ -968,22 +976,24 @@ def model_eval(
     for rv in inference_outputs.keys():
         val = inference_outputs[rv].detach().cpu().numpy().squeeze()
         if "qu" not in rv and "qs" not in rv:
-            adata.obsm[rv] = val
+            adata_.obsm[rv] = val
         else:
-            adata.uns[rv] = val
+            adata_.uns[rv] = val
 
     for rv in generative_outputs.keys():
         try:
             if rv == 'px_r' or rv == 'px_r_poe':
                 val = generative_outputs[rv].data.detach().cpu().numpy().squeeze()
-                adata.varm[rv] = val
+                adata_.varm[rv] = val
             else:
                 val = generative_outputs[rv].data.detach().cpu().numpy().squeeze()
-                adata.obsm[rv] = val
+                adata_.obsm[rv] = val
         except:
             print("rv: {} can't be stored".format(rv))
 
-    return inference_outputs, generative_outputs
+    qz_umap = get_z_umap(adata_.obsm['qz_m'])
+    adata_.obsm['z_umap'] = qz_umap
+    return inference_outputs, generative_outputs, adata_
 
 
 def model_eval_integrate(
@@ -999,8 +1009,8 @@ def model_eval_integrate(
     """
     model.eval()
     model = model.to(device)
-
-    x_in = torch.Tensor(adata.to_df().values).to(device)
+    adata_ = adata.copy()
+    x_in = torch.Tensor(adata_.to_df().values).to(device)
     sig_means = torch.Tensor(visium_args.sig_mean_norm.values).to(device)
     anchor_idx = torch.Tensor(visium_args.pure_idx).to(device)
 
@@ -1079,7 +1089,7 @@ def model_eval_integrate(
             mu=generative_outputs["px_rate"],
             theta=torch.exp(generative_outputs["px_r"])
         ).sample().detach().cpu().numpy()
-        adata.obsm['px'] = px
+        adata_.obsm['px'] = px
     except ValueError as ve:
         LOGGER.warning('Invalid Gamma distribution parameters `px_rate` or `px_r`, unable to sample inferred p(x | z)')
 
@@ -1087,28 +1097,29 @@ def model_eval_integrate(
     for rv in inference_outputs.keys():
         val = inference_outputs[rv].detach().cpu().numpy().squeeze()
         if "qu" not in rv and "qs" not in rv:
-            adata.obsm[rv] = val
+            adata_.obsm[rv] = val
         else:
-            adata.uns[rv] = val
+            adata_.uns[rv] = val
 
     for rv in generative_outputs.keys():
         try:
             if rv == 'px_r' or rv == 'reconstruction':  # Posterior avg. znorm signature means
                 val = generative_outputs[rv].data.detach().cpu().numpy().squeeze()
-                adata.varm[rv] = val
+                adata_.varm[rv] = val
             else:
                 val = generative_outputs[rv].data.detach().cpu().numpy().squeeze()
-                adata.obsm[rv] = val
+                adata_.obsm[rv] = val
         except:
             print("rv: {} can't be stored".format(rv))
 
-    return inference_outputs, generative_outputs
+    return inference_outputs, generative_outputs, adata_
 
 
 def model_ct_exp(
     model,
     adata,
     visium_args,
+    poe = False,
     device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 ):
     """
@@ -1117,14 +1128,21 @@ def model_ct_exp(
     sig_means = torch.Tensor(visium_args.sig_mean_norm.values).to(device)
     anchor_idx = torch.Tensor(visium_args.pure_idx).to(device)
     x_in = torch.Tensor(adata.to_df().values).to(device)
+    if poe: 
+        y_in = torch.Tensor(visium_args.get_img_patches()).float().to(device)
 
+    
     model.eval()
     model = model.to(device)
     pred_exprs = {}
 
     for ct_idx, cell_type in enumerate(adata.uns['cell_types']):
         # Get inference outputs for the given cell type
-        inference_outputs = model.inference(x_in)
+        
+        if poe: 
+            inference_outputs = model.inference(x_in,y_in)
+        else: 
+            inference_outputs = model.inference(x_in)
         inference_outputs['qz'] = inference_outputs['qz_m_ct'][:, ct_idx, :]
 
         # Get generative outputs

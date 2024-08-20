@@ -14,41 +14,157 @@ from scipy.stats import pearsonr, gaussian_kde
 from .post_analysis import get_z_umap
 from .utils import extract_feature
 
-
-def plot_spatial_feature(
-    map_info,
-    variable,
-    label,
-    vmin=None, vmax=None,
-    figsize=(2.5, 2)
+def plot_spatial_density(
+    data,
+    vmin=None,
+    vmax=None,
+    spot_size = 1,
+    figsize=(2.5, 2),
+    fig_dpi = 300,
+    cmap = 'Blues',
+    colorbar_on = True,
 ):
-    all_loc = np.array(map_info.loc[:,['array_col','array_row']])
-    fig, axes = plt.subplots(1, 1, figsize=figsize, dpi=300)
-    g = axes.scatter(all_loc[:,0],
-                     -all_loc[:,1],
-                     c=variable,
-                     vmin=vmin, vmax=vmax,
-                     cmap='magma',
-                     s=1
+    fig, axes = plt.subplots(1, 1, figsize=figsize, dpi=fig_dpi)
+    g = axes.scatter(data.obsm['spatial'][:,0],
+                     -data.obsm['spatial'][:,1],
+                     c=data.obsm['ql_m'],
+                     vmin=vmin, 
+                     vmax=vmax,
+                     cmap=cmap,
+                     s=spot_size,
                     )
-    fig.colorbar(g, label=label)
+    if colorbar_on:
+        fig.colorbar(g, label='Estimated density')
     axes.axis('off')
 
-
-def plot_spatial_gene(adata_sample,
-                         map_info,
-                         gene_name,
-                         
-                     ):
-    all_loc = np.array(map_info.loc[:,['array_col','array_row']])
-    fig,axs= plt.subplots(1,1,figsize=(2.5,2),dpi=300)
-    g=axs.scatter(all_loc[:,0],
-                  -all_loc[:,1],
-                  c=adata_sample.to_df().loc[:,gene_name],
-                  cmap='magma',
-                  s=1
+def plot_spatial_cell_type_frac( data = None,
+                                 cell_type = None,
+                                 vmin=None,# adjust 
+                                 vmax=None,# adjust 
+                                 spot_size=2,# adjust 
+                                 figsize = (3,2.5),
+                                 fig_dpi = 300, # >300 for high quality img
+                                 cmap = 'magma', 
+                                 colorbar_on = True,
+                                 label=None,
+                                 title=None,
+                                ):
+    
+    
+    fig,axs= plt.subplots(1,1,figsize=figsize,dpi=fig_dpi)
+    idx = data.uns['cell_types'].index(cell_type)
+    g=axs.scatter(data.obsm['spatial'][:,0],
+                  -data.obsm['spatial'][:,1],
+                  c=data.obsm['qc_m'][:,idx],
+                  cmap=cmap,
+                  vmin=vmin,
+                  vmax=vmax,
+                  s=spot_size
                  )
-    fig.colorbar(g,label=gene_name)
+    if title is not None:
+        plt.title(title)
+    else:
+        plt.title(cell_type)
+    if colorbar_on:
+        fig.colorbar(g,label=label)
+    plt.axis('off')
+    
+    
+    
+def plot_z_umap_cell_type_frac(data = None,
+                             cell_type = None,
+                             vmin=None,# adjust 
+                             vmax=None,# adjust 
+                             spot_size=2,# adjust 
+                             figsize = (3,2.5),
+                             fig_dpi = 300, # >300 for high quality img
+                             cmap = 'magma', 
+                             colorbar_on = True,
+                             label=None,
+                             title=None,
+                        ):
+    
+    
+    fig,axs= plt.subplots(1,1,figsize=figsize,dpi=fig_dpi)
+    idx = data.uns['cell_types'].index(cell_type)
+    g=axs.scatter(data.obsm['z_umap'][:,0],
+                  data.obsm['z_umap'][:,1],
+                  c=data.obsm['qc_m'][:,idx],
+                  cmap=cmap,
+                  vmin=vmin,
+                  vmax=vmax,
+                  s=spot_size
+                 )
+    if title is not None:
+        plt.title(title)
+    else:
+        plt.title(cell_type)
+    if colorbar_on:
+        fig.colorbar(g,label=label)
+    plt.axis('off')
+        
+def plot_spatial_feature(data = None,
+                         feature = None,
+                         vmin=None,# adjust 
+                         vmax=None,# adjust 
+                         spot_size=2,# adjust 
+                         figsize = (3,2.5),
+                         fig_dpi = 300, # >300 for high quality img
+                         cmap = 'magma', 
+                         colorbar_on = True,
+                         label=None
+                        ):
+    
+    
+    fig,axs= plt.subplots(1,1,figsize=figsize,dpi=fig_dpi)
+
+    g=axs.scatter(data.obsm['spatial'][:,0],
+                  -data.obsm['spatial'][:,1],
+                  c=feature,
+                  cmap=cmap,
+                  vmin=vmin,
+                  vmax=vmax,
+                  s=spot_size
+                 )
+    
+    if colorbar_on:
+        fig.colorbar(g,label=label)
+    plt.axis('off')
+
+def plot_spatial_gene(data,
+                      data_normed, 
+                      gene_name = None,
+                      log_gene = False,
+                      vmin=None,
+                      vmax=None,
+                      spot_size=5,
+                      figsize = (2,2),
+                      fig_dpi = 300,
+                      cmap = 'magma',
+                      colorbar_on = True,     
+                     ):
+    
+    fig,axs= plt.subplots(1,1,figsize=figsize,dpi=fig_dpi)
+    if log_gene:
+        g=axs.scatter(data_normed.obsm['spatial'][:,0],
+                      -data_normed.obsm['spatial'][:,1],
+                      c=data_normed.to_df().loc[:,gene_name],
+                      cmap=cmap,
+                      vmin=vmin,
+                      vmax=vmax,
+                      s=spot_size
+                     )
+    else:
+        g=axs.scatter(data.obsm['spatial'][:,0],
+                      -data.obsm['spatial'][:,1],
+                      c=data.to_df().loc[:,gene_name],
+                      cmap=cmap,
+                      vmin=vmin,
+                      vmax=vmax,
+                      s=spot_size
+                     )
+    if colorbar_on:
+        fig.colorbar(g,label=gene_name)
     plt.axis('off')
 
 
@@ -161,35 +277,46 @@ def pl_umap_feature(qz_u, qc, cmap, title, spot_size=3, vmin=0, vmax=None):
 
 
 def pl_spatial_inf_gene(
-    adata,
-    factor,
-    feature,
+    adata=None,
+    factor=None,
+    feature=None,
     vmin=None,
     vmax=None,
     spot_size=100,
     alpha=0,
-    cmap='Spectral_r'
+    figsize = (3,2.5),
+    fig_dpi = 500,
+    cmap='Spectral_r',
+    colorbar_on = True,          
+    title = None ,          
+    
 ):
+    
     if isinstance(feature, str):
         assert feature in set(adata.var_names), \
             "Gene {0} isn't HVG, please choose from `adata.var_names`".format(feature)
-        title = feature + ' (Predicted expression)'
+        title_new = feature + ' (Predicted expression)'
     else:
         for f in feature:
             assert f in set(adata.var_names), \
                 "Gene {0} isn't HVG, please choose from `adata.var_names`".format(f)
-        title = [f + ' (Predicted expression)' for f in feature]
+        title_new = [f + ' (Predicted expression)' for f in feature]
 
+    if title is not None:
+        title_new = title
     # Assign dummy `var_names` to avoid gene name in both obs & var
     adata_expr = extract_feature(adata, factor+'_inferred_exprs')
     adata_expr.var_names = np.arange(adata_expr.shape[1])
-
+    
+    sc.settings.set_figure_params(figsize=figsize,dpi=fig_dpi,facecolor="white")
+    
     sc.pl.spatial(
         adata_expr,
         color=feature, spot_size=spot_size, color_map=cmap,
         ncols=3, vmin=vmin, vmax=vmax, alpha_img=alpha,
-        title=title,
-        legend_fontsize=8
+        title=title_new,
+        legend_fontsize=8,
+        
     )
     
     pass

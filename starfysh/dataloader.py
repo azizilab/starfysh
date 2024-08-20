@@ -84,12 +84,12 @@ class VisiumPoEDataSet(VisiumDataset):
             left = max(0, self.r-xc)
             right = w if w > (xc+self.r) else w-(xc+self.r)
 
-            try:
-                patch = np.zeros(patch_dim)
-                patch[top:bottom, left:right] = self.image[yl:yr, xl:xr]
-                self.spot_img_stack.append(patch)
-            except ValueError:
-                LOGGER.warning('Skipping the patch loading of an edge spot...')
+            #try:
+            patch = np.zeros(patch_dim)
+            patch[top:bottom, left:right] = self.image[yl:yr, xl:xr]
+            self.spot_img_stack.append(patch)
+            #except ValueError:
+            #    LOGGER.warning('Skipping the patch loading of an edge spot...')
 
 
     def __len__(self):

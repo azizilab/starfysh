@@ -661,7 +661,7 @@ def preprocess_img(
     if os.path.isfile(filename):
         if rgb_channels:
             img = io.imread(filename)
-            img = (img-img.min())/(img.max()-img.min())
+            #img = (img-img.min())/(img.max()-img.min())
         
         else:
             img = io.imread(filename)

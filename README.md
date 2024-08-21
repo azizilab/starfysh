@@ -13,9 +13,10 @@ Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Tr
 <img src=figure/github_figure_2.png width="1000" />
 
 ### Quickstart tutorials
-  - [1. Basic deconvolution on an example breast cancer data (dataset & signature files included).](notebooks/Starfysh_tutorial_real.ipynb)
-  - [2. Histology integration & deconvolution without pre-defined signatures.](notebooks/Starfysh_tutorial_real_wo_signatures.ipynb) 
-  - [3. Multi-sample integration](notebooks/Starfysh_tutorial_integration.ipynb)
+  - [1. Basic deconvolution on an example breast cancer data with pre-defiend signatures, without poe(dataset & signature files included).](notebooks/Starfysh_tutorial_real_without_poe.ipynb)
+  - [2. Histology integration & deconvolution without pre-defined signatures.](notebooks/Starfysh_tutorial_real_wo_signatures.ipynb)
+  - [1. Basic deconvolution on an example breast cancer data with pre-defiend signatures, with histology images integration (poe) (dataset & signature files included).](notebooks/Starfysh_tutorial_real_without_poe.ipynb)
+  - [3. Multi-sample integration, with archetypes and poe](notebooks/Starfysh_tutorial_integration.ipynb)
 
 
 Please refer to [Starfysh Documentation](http://starfysh.readthedocs.io) for additional tutorials & APIs

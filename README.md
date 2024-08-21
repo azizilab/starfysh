@@ -12,11 +12,6 @@ Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Tr
 
 <img src=figure/github_figure_2.png width="1000" />
 
-### Tutorials on Colab (recommend)
-  - [1. Basic deconvolution](https://colab.research.google.com/drive/1a_mxF6Ot5vA_xzr5EaNz-GllYY-pXhwA)
-  - [2. Multi-sample integration](https://colab.research.google.com/drive/1STHh5Eoe0ayUkFck7NlNfMlNmqrQT-mZ)
-
-
 ### Quickstart tutorials
   - [1. Basic deconvolution on an example breast cancer data (dataset & signature files included).](notebooks/Starfysh_tutorial_real.ipynb)
   - [2. Histology integration & deconvolution w/ archetypal analysis priorswithout pre-defined signatures.](notebooks/Starfysh_tutorial_real_wo_signatures.ipynb) 

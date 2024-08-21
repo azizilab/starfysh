@@ -14,7 +14,7 @@ Starfysh is an end-to-end toolbox for the analysis and integration of Spatial Tr
 
 ### Quickstart tutorials
   - [1. Basic deconvolution on an example breast cancer data (dataset & signature files included).](notebooks/Starfysh_tutorial_real.ipynb)
-  - [2. Histology integration & deconvolution w/ archetypal analysis priorswithout pre-defined signatures.](notebooks/Starfysh_tutorial_real_wo_signatures.ipynb) 
+  - [2. Histology integration & deconvolution without pre-defined signatures.](notebooks/Starfysh_tutorial_real_wo_signatures.ipynb) 
   - [3. Multi-sample integration](notebooks/Starfysh_tutorial_integration.ipynb)
 
 
